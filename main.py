@@ -2,6 +2,8 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+import astrbot.api.message_components as Comp
+from astrbot.api.event import MessageChain
 import aiohttp
 import asyncio
 import json
@@ -11,6 +13,8 @@ from thefuzz import fuzz
 
 @register("chunithm_bot", "Ku2uka", "CHUNITHM机器人", "1.0.1")
 class ChunithmBot(Star):
+    VERSION_MAP = {0: '未知'}
+
     def __init__(self, context: Context):
         super().__init__(context)
         self.songs = []
@@ -34,7 +38,7 @@ class ChunithmBot(Star):
     
     async def load_data(self, force_refresh=False):
         """加载数据（先从本地，没有再请求API）"""
-        if force_refresh:
+        if force_refresh or len(self.VERSION_MAP) <= 1:
             await self.load_data_from_api()
             return
         
@@ -65,6 +69,9 @@ class ChunithmBot(Star):
                         raise Exception(f"歌曲API返回错误: {resp.status}")
                     data = await resp.json()
                     songs = data.get("songs", [])
+                    versions = data.get("versions")
+                    for version in versions:
+                        self.VERSION_MAP[version.get('version', 0)] = version.get('title', '未知')
                 
                 # 获取别名
                 async with session.get(url_alias) as resp_alias:
@@ -193,26 +200,66 @@ class ChunithmBot(Star):
             return
         
         # 构建回复
-        if len(results) == 1:
-            reply = f"找到 1 首相关歌曲：\n\n"
+        if len(results) == 1: # 只有一个结果时，回复带曲绘的消息链
+            song = results[0]
+            song_id = song.get('id', 0)
+            title = song.get('title', '未知曲名')
+            artist = song.get('artist', '未知曲师')
+            version = self.VERSION_MAP.get(song.get('version', 0), '未知')
+            diff_cnt = len(song.get('difficulties', []))
+            if diff_cnt >= 4:
+                bas_const = song['difficulties'][0].get('level_value', 0)
+                adv_const = song['difficulties'][1].get('level_value', 0)
+                exp_const = song['difficulties'][2].get('level_value', 0)
+                mas_const = song['difficulties'][3].get('level_value', 0)
+                bas_notes = song['difficulties'][0].get('notes', {}).get('total', 0)
+                adv_notes = song['difficulties'][1].get('notes', {}).get('total', 0)
+                exp_notes = song['difficulties'][2].get('notes', {}).get('total', 0)
+                mas_notes = song['difficulties'][3].get('notes', {}).get('total', 0)
+                exp_nd = song['difficulties'][2].get('note_designer', '')
+                mas_nd = song['difficulties'][3].get('note_designer', '')
+            if diff_cnt >= 5:
+                ult_const = song['difficulties'][4].get('level_value', 0)
+                ult_notes = song['difficulties'][4].get('notes', {}).get('total', 0)
+                ult_nd = song['difficulties'][4].get('note_designer', '')
+
+            chain_elements = [] # 消息链
+
+            # 文字部分
+            text_part = f"ID：c{song_id}\n"
+            text_part += f"曲名：{title}\n"
+            text_part += f"曲师：{artist}\n"
+            if diff_cnt <= 4:
+                text_part += f"定数：{bas_const} / {adv_const} / {exp_const} / {mas_const}\n"
+                text_part += f"物量：{bas_notes} / {adv_notes} / {exp_notes} / {mas_notes}\n"
+            else:
+                text_part += f"定数：{bas_const} / {adv_const} / {exp_const} / {mas_const} / {ult_const}\n"
+                text_part += f"物量：{bas_notes} / {adv_notes} / {exp_notes} / {mas_notes} / {ult_notes}\n"
+            text_part += f"EXPERT 谱师：{exp_nd}\n"
+            text_part += f"MASTER 谱师：{mas_nd}\n"
+            if diff_cnt >= 5:
+                text_part += f"ULTIMA 谱师：{ult_nd}\n"
+
+            # 图片url
+            image_url = f"https://assets2.lxns.net/chunithm/jacket/{song_id}.png"
+    
+            # 发送图文消息
+            yield event.chain_result([
+                Comp.Plain(text_part),
+                Comp.Image.fromURL(image_url)  # 直接用 URL，不用下载
+            ])
+
+        elif len(results) == 0:
+            text_part = "没有搜索到这首曲子呢……换个名字搜索？"
+            yield event.plain_result(text_part)
+
         else:
-            reply = f"找到 {len(results)} 首相关歌曲：\n\n"
-        
-        for i, song in enumerate(results, 1):
-            reply += f"{i}. 🎵 {song.get('title')}\n"
-            
-            # 显示别名
-            aliases = song.get('aliases', [])
-            if aliases:
-                alias_text = '、'.join(aliases[:3])
-                if len(aliases) > 3:
-                    alias_text += f'等{len(aliases)}个'
-                reply += f"   📝 别名：{alias_text}\n"
-            
-            if i < len(results):
-                reply += "   ────────────\n"
-        
-        yield event.plain_result(reply)
+            text_part = f"搜索到了 {len(results)} 首不同的曲目：\n"
+            for song in results:
+                song_id = song.get('id', 0)
+                title = song.get('title', '未知曲名')
+                text_part += f"c{song_id} - {title}\n"
+            yield event.plain_result(text_part)
     
     @filter.command("s_refresh")
     async def cmd_refresh(self, event: AstrMessageEvent):
