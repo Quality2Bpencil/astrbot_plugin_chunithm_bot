@@ -1,3 +1,4 @@
 aiohttp
 thefuzz
 python-Levenshtein
+curl_cffi
