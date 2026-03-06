@@ -5,6 +5,7 @@ from pathlib import Path
 from astrbot.api import logger
 from curl_cffi.requests import AsyncSession
 from enum import Enum
+import time
 
 class ResourceManager:
     """资源管理器：负责歌曲数据的加载"""
@@ -23,20 +24,22 @@ class ResourceManager:
         self.version_map = {0: "UNKNOWN"}
         self.jackets_dir = self.plugin_dir / "jackets"
         self.jackets_dir.mkdir(exist_ok=True)  # 确保目录存在
-        self.user_data = {}
-        self.user_data_file = self.plugin_dir / "user_data.json" # 用户QQ号对应好友码的dict
+        self.user_data = {'qq_number': {}, 'token': {}}
+        self.user_data_file = self.plugin_dir / "user_data.json" # 用户QQ号对应好友码与token的dict
         self.developer_api_key = ""
+        self.oauth_app = {}
         self.config_file = self.plugin_dir / "config.json"
 
-    def load_api_key(self):
-        """获取开发者API密钥"""
+    def load_config(self):
+        """获取开发者API密钥与OAuth应用信息"""
         if self.config_file.exists():
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.developer_api_key = data.get("developer_api_key")
+                    self.oauth_app = data.get('oauth_app')
             except Exception as e:
-                logger.error(f"读取API密钥失败: {e}")
+                logger.error(f"读取API密钥与OAuth应用信息失败: {e}")
 
     def load_user_data(self):
         """加载用户列表"""
@@ -57,6 +60,167 @@ class ResourceManager:
                     json.dump(self.user_data, f, ensure_ascii=False, indent=4)
             except Exception as e:
                 logger.error(f"保存用户列表失败: {e}")
+
+    async def handle_oauth(self, qq_number, code):
+        """
+        处理 OAuth 授权回调
+        
+        Args:
+            qq_number: 用户的QQ号
+            code: 授权码      
+        """
+        try:
+            # 1. 用 code 换取 token（异步HTTP请求）
+            token_data = await self._exchange_code(code)
+            
+            # 2. 验证token数据
+            if not token_data or 'access_token' not in token_data:
+                return None
+            
+            # 3. 计算过期时间
+            current_time = int(time.time())
+            token_data['expires_at'] = current_time + token_data.get('expires_in', 900) # 默认过期时间是15min
+            token_data['updated_at'] = current_time
+            
+            # 4. 保存到用户token字典
+            self.user_data['token'][qq_number] = token_data
+            
+            # 5. 保存到文件
+            self.save_user_data()
+            
+            # 6. 记录成功日志
+            logger.info(f"✅ 用户 {qq_number} 授权成功！")
+            logger.info(f"   access_token: {token_data['access_token'][:20]}...")
+            
+        except asyncio.TimeoutError:
+            logger.error("请求超时，服务器可能暂时无法访问")
+        except aiohttp.ClientConnectorError:
+            logger.error("网络连接失败，请检查服务器网络")
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"服务器返回错误: {e.status}")
+        except json.JSONDecodeError:
+            logger.error("服务器返回数据格式错误")
+        except Exception as e:
+            logger.error(f"未知错误: {str(e)}")
+
+    async def _exchange_code(self, code: str):
+        """
+        异步用授权码换取token
+        
+        Args:
+            code: 授权码
+            
+        Returns:
+            token数据字典
+        """
+        # 设置超时
+        timeout = aiohttp.ClientTimeout(total=30)
+        url = "https://maimai.lxns.net/api/v0/oauth/token"
+        
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url=url,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "client_id": self.oauth_app.get('client_id'),
+                    "client_secret": self.oauth_app.get('client_secret'),
+                    "redirect_uri": self.oauth_app.get('redirect_uri')
+                }
+            ) as response:
+                # 检查响应状态
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise aiohttp.ClientResponseError(
+                        response.request_info,
+                        response.history,
+                        status=response.status,
+                        message=error_text
+                    )
+                
+                # 解析JSON
+                result = await response.json()
+                
+                # 处理嵌套的data字段
+                if 'data' in result:
+                    return result['data']
+                return result
+
+    async def get_access_token(self, qq_number: str):
+        if qq_number not in self.user_data['token']:
+            return None
+
+        try:
+            # 1. 刷新token
+            refresh_token = self.user_data['token'][qq_number].get('refresh_token')
+            token_data = await self._refresh_access_token(refresh_token)
+            
+            # 2. 验证token数据
+            if not token_data or 'access_token' not in token_data:
+                return None
+            
+            # 3. 计算过期时间
+            current_time = int(time.time())
+            token_data['expires_at'] = current_time + token_data.get('expires_in', 900) # 默认过期时间是15min
+            token_data['updated_at'] = current_time
+            
+            # 4. 保存到用户token字典
+            self.user_data['token'][qq_number] = token_data
+            
+            # 5. 保存到文件
+            self.save_user_data()
+            
+            # 6. 记录成功日志
+            logger.info(f"✅ 用户 {qq_number} 刷新token成功！")
+
+            return token_data
+            
+        except asyncio.TimeoutError:
+            logger.error("请求超时，服务器可能暂时无法访问")
+        except aiohttp.ClientConnectorError:
+            logger.error("网络连接失败，请检查服务器网络")
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"服务器返回错误: {e.status}")
+        except json.JSONDecodeError:
+            logger.error("服务器返回数据格式错误")
+        except Exception as e:
+            logger.error(f"未知错误: {str(e)}")
+        
+    async def _refresh_access_token(self, refresh_token: str):
+        """
+        刷新访问令牌
+        """
+        # 设置超时
+        timeout = aiohttp.ClientTimeout(total=30)
+        url = "https://maimai.lxns.net/api/v0/oauth/token"
+        
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url=url,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": self.oauth_app.get('client_id'),
+                    "client_secret": self.oauth_app.get('client_secret'),
+                    "refresh_token": refresh_token
+                }
+            ) as response:
+                # 检查响应状态
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise aiohttp.ClientResponseError(
+                        response.request_info,
+                        response.history,
+                        status=response.status,
+                        message=error_text
+                    )
+                
+                # 解析JSON
+                result = await response.json()
+                
+                # 处理嵌套的data字段
+                if 'data' in result:
+                    return result['data']
+                return result
     
     async def load_data(self, force_refresh: bool = False) -> list:
         """
@@ -178,10 +342,12 @@ class ResourceManager:
             logger.error(f"曲绘下载异常 {song_id}: {e}")
             return None
         
-    async def get_from_developer_api(self, url, total_time=10):
-        headers = {
-            "Authorization": self.developer_api_key
-        }
+    async def get_from_developer_api(self, url, total_time=10, headers={}):
+        if headers == {}:
+            headers = {
+                "Authorization": self.developer_api_key
+            }
+
         # 创建超时配置（默认为10秒）
         timeout = aiohttp.ClientTimeout(total=total_time)
         
@@ -233,9 +399,9 @@ class ResourceManager:
             return None
         
     async def get_friend_code(self, qq_number, total_time=10):
-        if self.user_data.get(qq_number):
+        if self.user_data.get("qq_number", {}).get(qq_number):
             logger.info(f"成功在本地查询到{qq_number}的好友码")
-            return self.user_data[qq_number]
+            return self.user_data["qq_number"][qq_number]
         else:
             logger.info(f"没有在本地查询到{qq_number}的好友码，正在向落雪查询好友码...")
             return await self.bind_by_qq(qq_number, total_time=total_time)
@@ -245,12 +411,12 @@ class ResourceManager:
         data = await self.get_from_developer_api(url=url, total_time=total_time)
 
         if data.get('friend_code'):
-            if data['friend_code'] == self.user_data.get(qq_number):
+            if data['friend_code'] == self.user_data.get("qq_number", {}).get(qq_number):
                 logger.info(f"QQ号{qq_number}已与落雪账号绑定，不需重复绑定")
                 return data['friend_code']
             else:
                 logger.info(f"QQ号{qq_number}绑定落雪账号成功！")
-                self.user_data[qq_number] = data['friend_code']
+                self.user_data['qq_number'][qq_number] = data['friend_code']
                 self.save_user_data()
                 return data['friend_code']
         else:
@@ -267,9 +433,13 @@ class ResourceManager:
 
         return data
         
-    async def get_overpower_level(self, friend_code, total_time=10):
-        url = f"https://maimai.lxns.net/api/v0/chunithm/player/{friend_code}/scores"
-        data = await self.get_from_developer_api(url=url, total_time=total_time)
+    async def get_overpower_level(self, qq_number: str, total_time=10):
+        token_data = await self.get_access_token(qq_number)
+        url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
+        headers = {
+            "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
+        }
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
 
         if data == None:
             logger.error("查询overpower失败！")

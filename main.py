@@ -14,6 +14,7 @@ from thefuzz import fuzz
 
 from .resource_manager import ResourceManager, ParamType, Level
 from .image_generator import ImageGenerator
+from .web_server import OAuthWebServer
 
 @register("chunithm_bot", "Ku2uka", "CHUNITHM机器人", "1.0.1")
 class ChunithmBot(Star):
@@ -22,6 +23,7 @@ class ChunithmBot(Star):
         data_root = Path(get_astrbot_data_path())
         self.res_mgr = ResourceManager("astrbot_plugin_chunithm_bot", data_root)
         self.img_gen = ImageGenerator("astrbot_plugin_chunithm_bot", self.res_mgr, data_root)
+        self.web_server = OAuthWebServer(self.res_mgr)
         asyncio.create_task(self.initialize())
     
     async def initialize(self):
@@ -32,7 +34,10 @@ class ChunithmBot(Star):
         self.res_mgr.load_user_data()
         logger.info(f"导入用户数据成功，共 {len(self.res_mgr.user_data)} 个用户账号记录")
 
-        self.res_mgr.load_api_key()
+        self.res_mgr.load_config()
+
+        self.web_server.start()
+        logger.info(f"启动OAuth网页成功")
     
     def search_song(self, keyword, threshold=60):
         """
@@ -193,11 +198,16 @@ class ChunithmBot(Star):
         full_message = event.message_str
         parts = full_message.split()
         if len(parts) <= 1:
-            reply = await self.res_mgr.get_friend_code(qq_number)
-            yield event.plain_result(reply)
+            status = await self.res_mgr.bind_by_qq(qq_number)
+            if status == None:
+                reply = "你的落雪账号没有绑定你的QQ账号！请前往 落雪官网 -> 账号详情 -> 第三方应用 -> 第三方账号绑定 以绑定你的QQ账号！\n"
+            else:
+                reply = "好友码绑定成功！\n"
 
-            oauth_url = "https://maimai.lxns.net/oauth/authorize?response_type=code&client_id=a4f37a4e-c6c4-4ab4-a48a-4b815f06b8d4&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&scope=read_user_profile+read_player"
-            yield event.plain_result(oauth_url)
+            oauth_link = self.res_mgr.oauth_app.get('oauth_link') + qq_number
+            reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
+
+            yield event.plain_result(reply)
 
     @filter.command("b30")
     async def cmd_b30(self, event: AstrMessageEvent):
@@ -224,73 +234,16 @@ class ChunithmBot(Star):
         full_message = event.message_str
         parts = full_message.split()
         if len(parts) <= 1 or (len(parts) >= 2 and parts[1] == 'level'):
-            data = await self.res_mgr.get_overpower_level(friend_code)
+            data = await self.res_mgr.get_overpower_level(qq_number)
         elif parts[1] == 'version':
             pass
     
     @filter.command("s_refresh")
     async def cmd_refresh(self, event: AstrMessageEvent):
         '''手动刷新数据（管理员用）'''
-        await self.res_mgr.load_data(force_refresh=True)
-        yield event.plain_result(f"数据刷新完成！当前共 {len(self.res_mgr.songs)} 首歌曲")
-    
-    @filter.command("s_debug")
-    async def cmd_debug(self, event: AstrMessageEvent):
-        '''调试模式：显示搜索分数'''
-        message = event.message_str.strip()
-        parts = message.split(maxsplit=1)
-        
-        if len(parts) < 2:
-            yield event.plain_result("请提供搜索关键词")
-            return
-        
-        keyword = parts[1]
-        
-        if not self.res_mgr.songs:
-            yield event.plain_result("数据正在加载中...")
-            return
-        
-        # 获取带分数的结果
-        if not keyword or not self.res_mgr.songs:
-            yield event.plain_result("无结果")
-            return
-        
-        keyword = keyword.lower().strip()
-        debug_results = []
-        
-        for song in self.res_mgr.songs[:50]:  # 只检查前50首，避免刷屏
-            if song.get('id', 9999) >= 8000:
-                continue
-
-            title = song.get('title', '').lower()
-            aliases = [a.lower() for a in song.get('aliases', [])]
-            
-            # 计算分数（用同样的逻辑）
-            score = 0
-            if keyword == 'c' + str(song.get('id', 9999)):
-                score = 100
-            elif keyword == title:
-                score = 100
-            elif keyword in aliases:
-                score = 95
-            elif keyword in title:
-                score = 90
-            elif any(keyword in alias for alias in aliases):
-                score = 85
-            else:
-                title_score = fuzz.token_sort_ratio(keyword, title)
-                alias_scores = [fuzz.token_sort_ratio(keyword, alias) for alias in aliases]
-                alias_score = max(alias_scores) if alias_scores else 0
-                raw_score = max(title_score, alias_score)
-                score = min(raw_score, 89)
-            
-            if score >= 60:
-                debug_results.append((score, song))
-        
-        debug_results.sort(key=lambda x: x[0], reverse=True)
-        
-        reply = f"调试结果（关键词：{keyword}）：\n\n"
-        for score, song in debug_results[:10]:
-            reply += f"[{score}分] {song.get('title')}\n"
-        
-        yield event.plain_result(reply)
+        # 检查是否是管理员
+        if not event.is_admin():
+            yield event.plain_result("抱歉，只有管理员才能使用此命令。")
+        else:
+            await self.res_mgr.load_data(force_refresh=True)
+            yield event.plain_result(f"数据刷新完成！当前共 {len(self.res_mgr.songs)} 首歌曲")
