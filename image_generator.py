@@ -1312,7 +1312,7 @@ class ImageGenerator:
                 },
                 {
                     # 分数
-                    'text': f'{song.get('score', 0):,}',
+                    'text': f"{song.get('score', 0):,}",
                     'position': (score_x, score_y),
                     'font': score_font,
                     'color': 'black',
@@ -1320,7 +1320,7 @@ class ImageGenerator:
                 },
                 {
                     # 定数和Rating
-                    'text': f'{const:.1f}   >  {int(song.get('rating', 0) * 100) / 100:.2f}',
+                    'text': f"{const:.1f}   >  {int(song.get('rating', 0) * 100) / 100:.2f}",
                     'position': (const_x, const_y),
                     'font': const_font,
                     'color': 'black',
