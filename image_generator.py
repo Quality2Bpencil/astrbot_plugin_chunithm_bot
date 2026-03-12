@@ -1070,7 +1070,7 @@ class ImageGenerator:
 
         rating_small_mant_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 36)
         rating_small_mant_font.set_variation_by_name('Bold')
-        rating_small_mant_x = rating_small_x + 124
+        rating_small_mant_x = rating_small_x + 125
         b30_mant_y = b30_y + 12
         n20_mant_y = n20_y + 12
         b30_mant_text = f"{int(b30 * 10000) % 100:02d}"

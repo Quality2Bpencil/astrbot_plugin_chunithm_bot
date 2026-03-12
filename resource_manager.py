@@ -410,7 +410,7 @@ class ResourceManager:
         url = f"https://maimai.lxns.net/api/v0/chunithm/player/qq/{qq_number}"
         data = await self.get_from_developer_api(url=url, total_time=total_time)
 
-        if data.get('friend_code'):
+        if data != None and data.get('friend_code'):
             if data['friend_code'] == self.user_data.get("qq_number", {}).get(qq_number):
                 logger.info(f"QQ号{qq_number}已与落雪账号绑定，不需重复绑定")
                 return data['friend_code']
