@@ -112,7 +112,7 @@ class ImageGenerator:
 
     def draw_blurred_text(self, image, position, text, font, fill, blur_radius,
                            blur_color=None, blur_offset=(0, 0), stroke_width=0,
-                           stroke_fill=None):
+                           stroke_fill=None, anchor=None):
         """在图像上叠加一个高斯模糊的文字底层，再绘制清晰文字。"""
         if blur_radius <= 0:
             return image
@@ -141,7 +141,8 @@ class ImageGenerator:
             font=font,
             fill=blur_fill,
             stroke_width=stroke_width,
-            stroke_fill=stroke_fill
+            stroke_fill=stroke_fill,
+            anchor=anchor
         )
         blur_layer = blur_layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         return Image.alpha_composite(image, blur_layer)
@@ -1028,11 +1029,11 @@ class ImageGenerator:
         # 计算Rating
         b30, n20, b50 = 0, 0, 0
         for song in songs_data.get('bests', []):
-            b30 += int(song.get('rating', 0) * 100) / 100
-            b50 += int(song.get('rating', 0) * 100) / 100
+            b30 += int(song.get('rating', 0) * 100 + 1e-10) / 100
+            b50 += int(song.get('rating', 0) * 100 + 1e-10) / 100
         for song in songs_data.get('new_bests', []):
-            n20 += int(song.get('rating', 0) * 100) / 100
-            b50 += int(song.get('rating', 0) * 100) / 100
+            n20 += int(song.get('rating', 0) * 100 + 1e-10) / 100
+            b50 += int(song.get('rating', 0) * 100 + 1e-10) / 100
         b30 /= 30
         n20 /= 20
         b50 /= 50
@@ -1048,33 +1049,33 @@ class ImageGenerator:
         # 处理Rating
         rating_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 56)
         rating_font.set_variation_by_name('Bold')
-        rating_x = 794
-        rating_y = 144
-        rating_text = f"{int(b50 * 100) / 100:.2f}"
+        rating_x = 930
+        rating_y = 196
+        rating_text = f"{int(b50 * 100 + 1e-10) / 100:.2f}"
 
         # Rating的小数点后3~4位
         rating_mant_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 40)
         rating_mant_font.set_variation_by_name('Bold')
-        rating_mant_x = rating_x + 150
-        rating_mant_y = rating_y + 14
-        rating_mant_text = f"{int(b50 * 10000) % 100:02d}"
+        rating_mant_x = rating_x + 6
+        rating_mant_y = rating_y
+        rating_mant_text = f"{int(b50 * 10000 + 1e-10) % 100:02d}"
 
         # B30 N20
         rating_small_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 48)
         rating_small_font.set_variation_by_name('Bold')
-        rating_small_x = 910
-        b30_y = 273
-        n20_y = 1486
-        b30_text = f"{int(b30 * 100) / 100:.2f}"
-        n20_text = f"{int(n20 * 100) / 100:.2f}"
+        rating_small_x = 1033
+        b30_y = 319
+        n20_y = 1532
+        b30_text = f"{int(b30 * 100 + 1e-10) / 100:.2f}"
+        n20_text = f"{int(n20 * 100 + 1e-10) / 100:.2f}"
 
-        rating_small_mant_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 36)
+        rating_small_mant_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 38)
         rating_small_mant_font.set_variation_by_name('Bold')
-        rating_small_mant_x = rating_small_x + 125
-        b30_mant_y = b30_y + 12
-        n20_mant_y = n20_y + 12
-        b30_mant_text = f"{int(b30 * 10000) % 100:02d}"
-        n20_mant_text = f"{int(n20 * 10000) % 100:02d}"
+        rating_small_mant_x = rating_small_x + 5
+        b30_mant_y = b30_y
+        n20_mant_y = n20_y
+        b30_mant_text = f"{int(b30 * 10000 + 1e-10) % 100:02d}"
+        n20_mant_text = f"{int(n20 * 10000 + 1e-10) % 100:02d}"
 
         # 给Rating加模糊
         canvas = self.draw_blurred_text(
@@ -1085,7 +1086,8 @@ class ImageGenerator:
             fill=(255, 255, 255, 255),
             blur_radius=3,
             blur_color=(0, 0, 0, 140),
-            blur_offset=(2, 2)
+            blur_offset=(2, 2),
+            anchor='rb'
         )
         canvas = self.draw_blurred_text(
             canvas,
@@ -1095,7 +1097,8 @@ class ImageGenerator:
             fill=(255, 255, 255, 255),
             blur_radius=3,
             blur_color=(0, 0, 0, 140),
-            blur_offset=(2, 2)
+            blur_offset=(2, 2),
+            anchor='lb'
         )
         canvas = self.draw_blurred_text(
             canvas,
@@ -1105,7 +1108,8 @@ class ImageGenerator:
             fill=(255, 255, 255, 255),
             blur_radius=3,
             blur_color=(0, 0, 0, 140),
-            blur_offset=(2, 2)
+            blur_offset=(2, 2),
+            anchor='rb'
         )
         canvas = self.draw_blurred_text(
             canvas,
@@ -1115,7 +1119,8 @@ class ImageGenerator:
             fill=(255, 255, 255, 255),
             blur_radius=3,
             blur_color=(0, 0, 0, 140),
-            blur_offset=(2, 2)
+            blur_offset=(2, 2),
+            anchor='lb'
         )
         canvas = self.draw_blurred_text(
             canvas,
@@ -1125,7 +1130,8 @@ class ImageGenerator:
             fill=(255, 255, 255, 255),
             blur_radius=3,
             blur_color=(0, 0, 0, 140),
-            blur_offset=(2, 2)
+            blur_offset=(2, 2),
+            anchor='rb'
         )
         canvas = self.draw_blurred_text(
             canvas,
@@ -1135,7 +1141,8 @@ class ImageGenerator:
             fill=(255, 255, 255, 255),
             blur_radius=3,
             blur_color=(0, 0, 0, 140),
-            blur_offset=(2, 2)
+            blur_offset=(2, 2),
+            anchor='lb'
         )
         
         # 文字信息
@@ -1154,6 +1161,7 @@ class ImageGenerator:
                 'position': (rating_x, rating_y),
                 'font': rating_font,
                 'color': 'white',
+                'anchor': 'rb'
             },
             {
                 # Rating尾数
@@ -1161,6 +1169,7 @@ class ImageGenerator:
                 'position': (rating_mant_x, rating_mant_y),
                 'font': rating_mant_font,
                 'color': 'white',
+                'anchor': 'lb'
             },
             {
                 # B30
@@ -1168,6 +1177,7 @@ class ImageGenerator:
                 'position': (rating_small_x, b30_y),
                 'font': rating_small_font,
                 'color': 'white',
+                'anchor': 'rb'
             },
             {
                 # B30尾数
@@ -1175,6 +1185,7 @@ class ImageGenerator:
                 'position': (rating_small_mant_x, b30_mant_y),
                 'font': rating_small_mant_font,
                 'color': 'white',
+                'anchor': 'lb'
             },
             {
                 # N20
@@ -1182,6 +1193,7 @@ class ImageGenerator:
                 'position': (rating_small_x, n20_y),
                 'font': rating_small_font,
                 'color': 'white',
+                'anchor': 'rb'
             },
             {
                 # N20尾数
@@ -1189,6 +1201,7 @@ class ImageGenerator:
                 'position': (rating_small_mant_x, n20_mant_y),
                 'font': rating_small_mant_font,
                 'color': 'white',
+                'anchor': 'lb'
             },
         ]
         
@@ -1203,7 +1216,7 @@ class ImageGenerator:
         # 处理分数
         score_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 39)
         score_font.set_variation_by_name('SemiBold')
-        score_x0 = 254
+        score_x0 = 162
         score_y0 = 443
 
         # 定数与Rating
@@ -1233,10 +1246,20 @@ class ImageGenerator:
 
         index = 0
         new_dy = 0
+
+        if 'bests' not in songs_data:
+            songs_data['bests'] = []
+        while len(songs_data['bests']) < 30:
+            songs_data['bests'].append(None)
+
         for song in songs_data.get('bests', []) + songs_data.get('new_bests', []):
             # New 20 要再往下一点
             if index == 30:
                 new_dy = 123
+
+            if song is None:
+                index += 1
+                continue
 
             song_id = song.get('id', 2353) # 其实2353是幻想即兴曲（
             jacket_path = await self.res_mgr.get_jacket(song_id)
@@ -1316,11 +1339,11 @@ class ImageGenerator:
                     'position': (score_x, score_y),
                     'font': score_font,
                     'color': 'black',
-                    'anchor': 'mm'
+                    'anchor': 'lm'
                 },
                 {
                     # 定数和Rating
-                    'text': f"{const:.1f}   >  {int(song.get('rating', 0) * 100) / 100:.2f}",
+                    'text': f"{const:.1f}   >  {int(song.get('rating', 0) * 100 + 1e-10) / 100:.2f}",
                     'position': (const_x, const_y),
                     'font': const_font,
                     'color': 'black',
@@ -1411,25 +1434,6 @@ class ImageGenerator:
             draw.text(item['position'], item['text'], 
                     fill=item['color'], font=item['font'],
                     anchor=item.get('anchor'))
-
-        """
-        # 处理曲名
-        title_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 70)
-        title_text = self.truncate_text_to_fit(draw, song_data.get('title'), title_font, 1050)
-
-        # 处理曲师
-        artist_font = ImageFont.truetype(self.fonts_dir / 'LXGWWenKai-Medium.ttf', 38)
-        artist_text = self.truncate_text_to_fit(draw, song_data.get('artist'), artist_font, 1050)
-
-        # 处理info
-        info_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 36)
-        info_font.set_variation_by_name('Medium')
-
-        # 处理定数和物量数字
-        num_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 45)
-        num_font.set_variation_by_name('SemiBold')      
-        
-        """
         
         # 保存图片
         if output_path is None:

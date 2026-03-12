@@ -520,6 +520,102 @@ class ResourceManager:
         logger.info("计算OVERPOWER完成")
 
         return op_percent
+    
+    async def get_max_best(self):
+        b30_list = []
+        n20_list = []
+        new_version1 = 22500 # LUMINOUS PLUS
+        new_version2 = 23000 # VERSE
+        b30_lowest = 0
+        n20_lowest = 0
+
+        for song in self.songs:
+            if song.get('id', 9999) >= 8000: # WE谱
+                continue
+            if song['version'] == new_version1 or song['version'] == new_version2:
+                # 新曲
+                for difficulty in song['difficulties']:
+                    const = difficulty['level_value']
+                    if const <= n20_lowest:
+                        continue
+
+                    if n20_list == []:
+                        tmp_score = {
+                            'id': song['id'],
+                            'song_name': song['title'],
+                            'level_index': difficulty['difficulty'],
+                            'score': 1010000,
+                            'level_value': difficulty['level_value'],
+                            'rating': difficulty['level_value'] + 2.15,
+                            'full_combo': 'alljusticecritical'
+                        }
+                        n20_list.insert(0, tmp_score)
+                        continue
+                    
+                    index = 0
+                    for score in n20_list:
+                        if index >= 20:
+                            break
+                        if const <= score['level_value']:
+                            index += 1
+                            continue
+                        tmp_score = {
+                            'id': song['id'],
+                            'song_name': song['title'],
+                            'level_index': difficulty['difficulty'],
+                            'score': 1010000,
+                            'level_value': difficulty['level_value'],
+                            'rating': difficulty['level_value'] + 2.15,
+                            'full_combo': 'alljusticecritical'
+                        }
+                        n20_list.insert(index, tmp_score)
+                        break
+                    
+                    if len(n20_list) >= 20:
+                        n20_lowest = n20_list[19]['level_value']
+            else:
+                # 老曲
+                for difficulty in song['difficulties']:
+                    const = difficulty['level_value']
+                    if const <= b30_lowest:
+                        continue
+
+                    if b30_list == []:
+                        tmp_score = {
+                            'id': song['id'],
+                            'song_name': song['title'],
+                            'level_index': difficulty['difficulty'],
+                            'score': 1010000,
+                            'level_value': difficulty['level_value'],
+                            'rating': difficulty['level_value'] + 2.15,
+                            'full_combo': 'alljusticecritical'
+                        }
+                        b30_list.insert(0, tmp_score)
+                        continue
+                    
+                    index = 0
+                    for score in b30_list:
+                        if index >= 30:
+                            break
+                        if const <= score['level_value']:
+                            index += 1
+                            continue
+                        tmp_score = {
+                            'id': song['id'],
+                            'song_name': song['title'],
+                            'level_index': difficulty['difficulty'],
+                            'score': 1010000,
+                            'level_value': difficulty['level_value'],
+                            'rating': difficulty['level_value'] + 2.15,
+                            'full_combo': 'alljusticecritical'
+                        }
+                        b30_list.insert(index, tmp_score)
+                        break
+                    
+                    if len(b30_list) >= 30:
+                        b30_lowest = b30_list[29]['level_value']
+
+        return {"bests": b30_list[:30], "new_bests": n20_list[:20]}
         
 class ParamType(Enum):
     LEVEL = 0

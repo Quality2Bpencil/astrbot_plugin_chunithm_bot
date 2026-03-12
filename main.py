@@ -209,26 +209,63 @@ class ChunithmBot(Star):
 
             yield event.plain_result(reply)
 
+    async def _get_best_result(self, event: AstrMessageEvent):
+        """查询best成绩的核心逻辑，返回 (error_msg, image_path)"""
+        qq_number = event.get_sender_id()
+        friend_code = await self.res_mgr.get_friend_code(qq_number)
+        if friend_code is None:
+            return "你还未绑定你的账号！", None
+        data = await self.res_mgr.get_b30(friend_code)
+        player = await self.res_mgr.get_player(friend_code)
+        if data is None or player is None:
+            return "你的账号数据异常！", None
+        image_path = await self.img_gen.create_b30_image(data, player_name=player.get("name", "CHUNITHM"))
+        return None, image_path
+
     @filter.command("b30")
     async def cmd_b30(self, event: AstrMessageEvent):
         """查询b30。用法：/b30"""
-        qq_number = event.get_sender_id()
-        friend_code = await self.res_mgr.get_friend_code(qq_number)
-        if friend_code == None:
-            yield event.plain_result("你还未绑定你的账号！")
-            return
-        data = await self.res_mgr.get_b30(friend_code)
-        player = await self.res_mgr.get_player(friend_code)
-        if data == None or player == None:
-            yield event.plain_result("你的账号数据异常！")
-            return
-        image_path = await self.img_gen.create_b30_image(data, player_name=player.get("name", "CHUNITHM"),)
-        yield event.image_result(image_path)
+        error, image_path = await self._get_best_result(event)
+        if error:
+            yield event.plain_result(error)
+        else:
+            yield event.image_result(image_path)
 
-    @filter.command("aj30")
-    async def cmd_aj30(self, event: AstrMessageEvent):
-        """查询aj30。用法：/aj30"""
-        pass
+    @filter.command("b50")
+    async def cmd_b50(self, event: AstrMessageEvent):
+        """查询b50。用法：/b50"""
+        error, image_path = await self._get_best_result(event)
+        if error:
+            yield event.plain_result(error)
+        else:
+            yield event.image_result(image_path)
+
+    async def _get_max_best(self, event: AstrMessageEvent):
+        """查询理论b30"""
+        data = await self.res_mgr.get_max_best()
+        image_path = await self.img_gen.create_b30_image(data, player_name="Max Rating")
+        if image_path is None:
+            return "查询理论Rating失败！", None
+        else:
+            return None, image_path
+
+    @filter.command("max30")
+    async def cmd_max30(self, event: AstrMessageEvent):
+        """查询理论b30。用法：/max30"""
+        error, image_path = await self._get_max_best(event)
+        if error:
+            yield event.plain_result(error)
+        else:
+            yield event.image_result(image_path)
+
+    @filter.command("max50")
+    async def cmd_max50(self, event: AstrMessageEvent):
+        """查询理论b50。用法：/max50"""
+        error, image_path = await self._get_max_best(event)
+        if error:
+            yield event.plain_result(error)
+        else:
+            yield event.image_result(image_path)
 
     @filter.command("overpower")
     async def cmd_overpower(self, event: AstrMessageEvent):
