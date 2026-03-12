@@ -240,7 +240,7 @@ class ResourceManager:
                     data = json.load(f)
                     self.songs = data.get('songs', [])
                     for song in self.songs:
-                        self.song_map[song.get('id',0)] = song
+                        self.song_map[song.get('id', 0)] = song
                     versions = data.get('versions', [])
                     for version in versions:
                         self.version_map[version.get('version', 0)] = version.get('title', '未知')
@@ -269,8 +269,8 @@ class ResourceManager:
                         raise Exception(f"歌曲API返回错误: {resp.status}")
                     data = await resp.json()
                     songs = data.get("songs", [])
-                    for song in self.songs:
-                        self.song_map[song.get('id',0)] = song
+                    for song in songs:
+                        self.song_map[song.get('id', 0)] = song
                     # 获取版本
                     versions = data.get("versions")
                     for version in versions:
@@ -421,6 +421,17 @@ class ResourceManager:
                 return data['friend_code']
         else:
             logger.error("绑定失败！")
+        
+    async def get_player(self, friend_code, total_time=10):
+        url = f"https://maimai.lxns.net/api/v0/chunithm/player/{friend_code}"
+        data = await self.get_from_developer_api(url=url, total_time=total_time)
+
+        if data == None:
+            logger.error("查询玩家信息失败！")
+        else:
+            logger.info("查询玩家信息成功！")
+
+        return data
 
     async def get_b30(self, friend_code, total_time=10):
         url = f"https://maimai.lxns.net/api/v0/chunithm/player/{friend_code}/bests"

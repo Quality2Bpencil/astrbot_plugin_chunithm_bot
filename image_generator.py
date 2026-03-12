@@ -1,11 +1,12 @@
 import os
 import random
 import string
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
 from pathlib import Path
 import math
 import time
 from astrbot.api import logger
+import unicodedata
 
 from .resource_manager import ResourceManager, ParamType, Level
 
@@ -108,6 +109,42 @@ class ImageGenerator:
         result.paste(image, (image_x, image_y), image)
         
         return result
+
+    def draw_blurred_text(self, image, position, text, font, fill, blur_radius,
+                           blur_color=None, blur_offset=(0, 0), stroke_width=0,
+                           stroke_fill=None):
+        """在图像上叠加一个高斯模糊的文字底层，再绘制清晰文字。"""
+        if blur_radius <= 0:
+            return image
+
+        if len(fill) == 3:
+            base_fill = (*fill, 255)
+        else:
+            base_fill = fill
+
+        if blur_color is None:
+            blur_fill = base_fill[:-1] + (180,)
+        elif len(blur_color) == 3:
+            blur_fill = (*blur_color, 180)
+        else:
+            blur_fill = blur_color
+
+        blur_layer = Image.new('RGBA', image.size, (0, 0, 0, 0))
+        blur_draw = ImageDraw.Draw(blur_layer)
+        blur_position = (
+            position[0] + blur_offset[0],
+            position[1] + blur_offset[1]
+        )
+        blur_draw.text(
+            blur_position,
+            text,
+            font=font,
+            fill=blur_fill,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_fill
+        )
+        blur_layer = blur_layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        return Image.alpha_composite(image, blur_layer)
     
     def add_rounded_corner_with_outer_blur(self, image, corner_radius=50, blur_radius=10, shadow_opacity=180):
         """
@@ -179,6 +216,60 @@ class ImageGenerator:
         
         return result
     
+    def paste_gradient_polygon(self, canvas, points, colors, angle_deg=135):
+        # colors: [(r,g,b,a), ...] 至少2个
+        min_x = min(x for x, y in points)
+        max_x = max(x for x, y in points)
+        min_y = min(y for x, y in points)
+        max_y = max(y for x, y in points)
+
+        width = max_x - min_x + 1
+        height = max_y - min_y + 1
+
+        gradient = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        pixels = gradient.load()
+
+        rad = math.radians(angle_deg)
+        ux = math.cos(rad)
+        uy = math.sin(rad)
+
+        corners = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
+        proj_vals = [x * ux + y * uy for x, y in corners]
+        proj_min = min(proj_vals)
+        proj_max = max(proj_vals)
+        denom = max(proj_max - proj_min, 1e-6)
+
+        n = len(colors)
+        seg_count = n - 1
+
+        for y in range(height):
+            for x in range(width):
+                proj = x * ux + y * uy
+                t = (proj - proj_min) / denom
+                t = max(0.0, min(1.0, t))
+
+                # 分段：0..1 映射到 0..seg_count
+                pos = t * seg_count
+                i = min(int(pos), seg_count - 1)
+                local_t = pos - i
+
+                c1 = colors[i]
+                c2 = colors[i + 1]
+
+                pixels[x, y] = (
+                    int(c1[0] * (1 - local_t) + c2[0] * local_t),
+                    int(c1[1] * (1 - local_t) + c2[1] * local_t),
+                    int(c1[2] * (1 - local_t) + c2[2] * local_t),
+                    int(c1[3] * (1 - local_t) + c2[3] * local_t),
+                )
+
+        mask = Image.new('L', (width, height), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        local_points = [(x - min_x, y - min_y) for x, y in points]
+        mask_draw.polygon(local_points, fill=255)
+
+        canvas.paste(gradient, (min_x, min_y), mask)
+
     def create_composite_image(self, background_image, images_data, output_path=None):
         """
         创建合成图片
@@ -256,6 +347,9 @@ class ImageGenerator:
                 - 'align': 对齐方式（'left', 'center', 'right'）
                 - 'stroke_width': 描边宽度
                 - 'stroke_color': 描边颜色
+                - 'blur_radius': 边缘模糊半径
+                - 'blur_color': 边缘模糊颜色，支持 RGB 或 RGBA
+                - 'blur_offset': 模糊层偏移量 (x, y)
                 
         Returns:
             添加文字后的图片路径
@@ -274,32 +368,21 @@ class ImageGenerator:
             text_data = [text_data]
         
         for text_item in text_data:
-            try:
-                # 加载字体
-                if 'font_path' in text_item and os.path.exists(text_item['font_path']):
-                    font = ImageFont.truetype(text_item['font_path'], text_item['font_size'])
-                else:
-                    # 使用默认字体
-                    font = ImageFont.load_default()
-                    # 如果字体大小需要调整，可以使用以下方法
-                    if text_item['font_size'] > 10:
-                        # 尝试加载系统字体
-                        system_fonts = [
-                            '/System/Library/Fonts/PingFang.ttc',  # macOS
-                            'C:/Windows/Fonts/msyh.ttc',           # Windows
-                            '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf'  # Linux
-                        ]
-                        for font_path in system_fonts:
-                            if os.path.exists(font_path):
-                                try:
-                                    font = ImageFont.truetype(font_path, text_item['font_size'])
-                                    break
-                                except:
-                                    continue
-            
-            except Exception as e:
-                print(f"加载字体失败: {e}")
-                font = ImageFont.load_default()
+            font = self._load_font_from_text_item(text_item)
+
+            fill_color = text_item.get('color', (0, 0, 0))
+            if isinstance(fill_color, str):
+                fill_color = ImageColor.getrgb(fill_color)
+
+            stroke_color = text_item.get('stroke_color', (255, 255, 255))
+            if isinstance(stroke_color, str):
+                stroke_color = ImageColor.getrgb(stroke_color)
+
+            blur_color = text_item.get('blur_color')
+            if isinstance(blur_color, str):
+                blur_color = ImageColor.getrgb(blur_color)
+
+            stroke_width = text_item.get('stroke_width', 0)
             
             # 计算文字位置
             position = text_item['position']
@@ -312,17 +395,33 @@ class ImageGenerator:
                 bbox = draw.textbbox((0, 0), text_item['text'], font=font)
                 text_width = bbox[2] - bbox[0]
                 position = (position[0] - text_width, position[1])
+
+            blur_radius = text_item.get('blur_radius', 0)
+            if blur_radius > 0:
+                img = self._draw_blurred_text(
+                    img,
+                    position,
+                    text_item['text'],
+                    font,
+                    fill_color,
+                    blur_radius,
+                    blur_color=blur_color,
+                    blur_offset=text_item.get('blur_offset', (0, 0)),
+                    stroke_width=stroke_width,
+                    stroke_fill=stroke_color
+                )
+                draw = ImageDraw.Draw(img)
             
             # 绘制文字
-            if 'stroke_width' in text_item and text_item['stroke_width'] > 0:
+            if stroke_width > 0:
                 # 带描边的文字
                 draw.text(
                     position,
                     text_item['text'],
                     font=font,
-                    fill=text_item.get('color', (0, 0, 0)),
-                    stroke_width=text_item['stroke_width'],
-                    stroke_fill=text_item.get('stroke_color', (255, 255, 255))
+                    fill=fill_color,
+                    stroke_width=stroke_width,
+                    stroke_fill=stroke_color
                 )
             else:
                 # 普通文字
@@ -330,7 +429,7 @@ class ImageGenerator:
                     position,
                     text_item['text'],
                     font=font,
-                    fill=text_item.get('color', (0, 0, 0))
+                    fill=fill_color
                 )
         
         # 保存图片
@@ -900,7 +999,7 @@ class ImageGenerator:
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)
 
-    async def create_b30_image(self, songs_data, output_path=None):
+    async def create_b30_image(self, songs_data, player_name="CHUNITHM", output_path=None):
         """
         生成曲目信息图片（复用基础函数）
         """
@@ -921,24 +1020,233 @@ class ImageGenerator:
             # 没有背景图片，使用纯色背景
             canvas = Image.new('RGB', (canvas_width, canvas_height), (20, 20, 30))
 
+        # 玩家昵称
+        name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 64)
+        name_x = 334
+        name_y = 150
+
+        # 计算Rating
+        b30, n20, b50 = 0, 0, 0
+        for song in songs_data.get('bests', []):
+            b30 += int(song.get('rating', 0) * 100) / 100
+            b50 += int(song.get('rating', 0) * 100) / 100
+        for song in songs_data.get('new_bests', []):
+            n20 += int(song.get('rating', 0) * 100) / 100
+            b50 += int(song.get('rating', 0) * 100) / 100
+        b30 /= 30
+        n20 /= 20
+        b50 /= 50
+        
+        jacket_size = 140
+        jacket_radius = 15
+        jacket_x0 = 40
+        jacket_y0 = 394
+        
+        delta_x = 353
+        delta_y = 182
+
+        # 处理Rating
+        rating_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 56)
+        rating_font.set_variation_by_name('Bold')
+        rating_x = 794
+        rating_y = 144
+        rating_text = f"{int(b50 * 100) / 100:.2f}"
+
+        # Rating的小数点后3~4位
+        rating_mant_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 40)
+        rating_mant_font.set_variation_by_name('Bold')
+        rating_mant_x = rating_x + 150
+        rating_mant_y = rating_y + 14
+        rating_mant_text = f"{int(b50 * 10000) % 100:02d}"
+
+        # B30 N20
+        rating_small_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 48)
+        rating_small_font.set_variation_by_name('Bold')
+        rating_small_x = 910
+        b30_y = 273
+        n20_y = 1486
+        b30_text = f"{int(b30 * 100) / 100:.2f}"
+        n20_text = f"{int(n20 * 100) / 100:.2f}"
+
+        rating_small_mant_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 36)
+        rating_small_mant_font.set_variation_by_name('Bold')
+        rating_small_mant_x = rating_small_x + 124
+        b30_mant_y = b30_y + 12
+        n20_mant_y = n20_y + 12
+        b30_mant_text = f"{int(b30 * 10000) % 100:02d}"
+        n20_mant_text = f"{int(n20 * 10000) % 100:02d}"
+
+        # 给Rating加模糊
+        canvas = self.draw_blurred_text(
+            canvas,
+            position=(rating_x, rating_y),
+            text=rating_text,
+            font=rating_font,
+            fill=(255, 255, 255, 255),
+            blur_radius=3,
+            blur_color=(0, 0, 0, 140),
+            blur_offset=(2, 2)
+        )
+        canvas = self.draw_blurred_text(
+            canvas,
+            position=(rating_mant_x, rating_mant_y),
+            text=rating_mant_text,
+            font=rating_mant_font,
+            fill=(255, 255, 255, 255),
+            blur_radius=3,
+            blur_color=(0, 0, 0, 140),
+            blur_offset=(2, 2)
+        )
+        canvas = self.draw_blurred_text(
+            canvas,
+            position=(rating_small_x, b30_y),
+            text=b30_text,
+            font=rating_small_font,
+            fill=(255, 255, 255, 255),
+            blur_radius=3,
+            blur_color=(0, 0, 0, 140),
+            blur_offset=(2, 2)
+        )
+        canvas = self.draw_blurred_text(
+            canvas,
+            position=(rating_small_mant_x, b30_mant_y),
+            text=b30_mant_text,
+            font=rating_small_mant_font,
+            fill=(255, 255, 255, 255),
+            blur_radius=3,
+            blur_color=(0, 0, 0, 140),
+            blur_offset=(2, 2)
+        )
+        canvas = self.draw_blurred_text(
+            canvas,
+            position=(rating_small_x, n20_y),
+            text=n20_text,
+            font=rating_small_font,
+            fill=(255, 255, 255, 255),
+            blur_radius=3,
+            blur_color=(0, 0, 0, 140),
+            blur_offset=(2, 2)
+        )
+        canvas = self.draw_blurred_text(
+            canvas,
+            position=(rating_small_mant_x, n20_mant_y),
+            text=n20_mant_text,
+            font=rating_small_mant_font,
+            fill=(255, 255, 255, 255),
+            blur_radius=3,
+            blur_color=(0, 0, 0, 140),
+            blur_offset=(2, 2)
+        )
+        
+        # 文字信息
+        text_data = [
+            {
+                # 昵称
+                'text': unicodedata.normalize("NFKC", player_name), # 全角转半角
+                'position': (name_x, name_y),
+                'font': name_font,
+                'color': 'black',
+                'anchor': 'mm'
+            },
+            {
+                # Rating
+                'text': rating_text,
+                'position': (rating_x, rating_y),
+                'font': rating_font,
+                'color': 'white',
+            },
+            {
+                # Rating尾数
+                'text': rating_mant_text,
+                'position': (rating_mant_x, rating_mant_y),
+                'font': rating_mant_font,
+                'color': 'white',
+            },
+            {
+                # B30
+                'text': b30_text,
+                'position': (rating_small_x, b30_y),
+                'font': rating_small_font,
+                'color': 'white',
+            },
+            {
+                # B30尾数
+                'text': b30_mant_text,
+                'position': (rating_small_mant_x, b30_mant_y),
+                'font': rating_small_mant_font,
+                'color': 'white',
+            },
+            {
+                # N20
+                'text': n20_text,
+                'position': (rating_small_x, n20_y),
+                'font': rating_small_font,
+                'color': 'white',
+            },
+            {
+                # N20尾数
+                'text': n20_mant_text,
+                'position': (rating_small_mant_x, n20_mant_y),
+                'font': rating_small_mant_font,
+                'color': 'white',
+            },
+        ]
+        
         # 创建绘图对象（使用RGBA模式支持透明度）
         draw = ImageDraw.Draw(canvas, 'RGBA')
         
-        # ========== 曲绘部分 ==========
-        jacket_size = 150
-        jacket_radius = 15
-        jacket_x0 = 36
-        jacket_y0 = 387
-        delta_x = 354
-        delta_y = 182
-        
+        # 处理曲名
+        title_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 24)
+        title_x0 = 159
+        title_y0 = 385
+
+        # 处理分数
+        score_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 39)
+        score_font.set_variation_by_name('SemiBold')
+        score_x0 = 254
+        score_y0 = 443
+
+        # 定数与Rating
+        const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 26)
+        const_font.set_variation_by_name('SemiBold')
+        const_x0 = 185
+        const_y0 = 470
+
+        # 角标
+        right_x0 = 360
+        bottom_y0 = 514
+        leg_len1 = 25
+        leg_len2 = 50
+        p1_x0, p1_y0 = right_x0, bottom_y0 - leg_len2
+        p2_x0, p2_y0 = right_x0, bottom_y0 - leg_len1
+        p3_x0, p3_y0 = right_x0 - leg_len1, bottom_y0
+        p4_x0, p4_y0 = right_x0 - leg_len2, bottom_y0
+
+        # 难度标
+        tan_a = 3
+        width = 10
+        height = 27
+        p5_x0, p5_y0 = 170, 472
+        p6_x0, p6_y0 = p5_x0 + width, p5_y0
+        p7_x0, p7_y0 = round(p6_x0 - height / tan_a), p6_y0 + height
+        p8_x0, p8_y0 = p7_x0 - width, p7_y0
+
         index = 0
-        for song in songs_data.get('bests', []):
+        new_dy = 0
+        for song in songs_data.get('bests', []) + songs_data.get('new_bests', []):
+            # New 20 要再往下一点
+            if index == 30:
+                new_dy = 123
+
             song_id = song.get('id', 2353) # 其实2353是幻想即兴曲（
             jacket_path = await self.res_mgr.get_jacket(song_id)
+            level_index = song.get('level_index', -1)
+            if level_index != -1:
+                const = self.res_mgr.song_map[song_id]['difficulties'][level_index]['level_value']
             
+            # ========== 曲绘部分 ==========
             jacket_x = jacket_x0 + (index % 5) * delta_x
-            jacket_y = jacket_y0 + (index // 5) * delta_y
+            jacket_y = jacket_y0 + (index // 5) * delta_y + new_dy
 
             try:
                 # 加载曲绘
@@ -955,7 +1263,7 @@ class ImageGenerator:
                 jacket_with_shadow = self.add_rounded_corner_with_outer_blur(
                     jacket,
                     corner_radius=jacket_radius * scale_factor,  # 圆角半径也相应放大
-                    blur_radius=5 * scale_factor,
+                    blur_radius=6 * scale_factor,
                     shadow_opacity=110
                 )
 
@@ -964,7 +1272,7 @@ class ImageGenerator:
                 jacket_with_shadow = jacket_with_shadow.resize(final_size, Image.Resampling.LANCZOS)
 
                 # 计算偏移（因为有扩展区域）
-                blur_extension = 5 * 3  # blur_radius * 3
+                blur_extension = 6 * 3  # blur_radius * 3
                 canvas.paste(
                     jacket_with_shadow,
                     (jacket_x - blur_extension, jacket_y - blur_extension),
@@ -982,8 +1290,127 @@ class ImageGenerator:
                 text_draw.text((jacket_size//2 - 40, jacket_size//2 - 10), 
                             "No Image", fill=(100, 100, 100))
                 canvas.paste(text_img, (jacket_x, jacket_y), text_img)
+
+            # 文字部分
+            title_text = self.truncate_text_to_fit(draw, song.get('song_name', 'Unknown Song'), title_font, 200)
+            title_x = title_x0 + (index % 5) * delta_x
+            title_y = title_y0 + (index // 5) * delta_y + new_dy
+
+            score_x = score_x0 + (index % 5) * delta_x
+            score_y = score_y0 + (index // 5) * delta_y + new_dy
+
+            const_x = const_x0 + (index % 5) * delta_x
+            const_y = const_y0 + (index // 5) * delta_y + new_dy
+
+            text_data_extend = [
+                {
+                    # 曲名
+                    'text': title_text,
+                    'position': (title_x, title_y),
+                    'font': title_font,
+                    'color': 'black',
+                },
+                {
+                    # 分数
+                    'text': f'{song.get('score', 0):,}',
+                    'position': (score_x, score_y),
+                    'font': score_font,
+                    'color': 'black',
+                    'anchor': 'mm'
+                },
+                {
+                    # 定数和Rating
+                    'text': f'{const:.1f}   >  {int(song.get('rating', 0) * 100) / 100:.2f}',
+                    'position': (const_x, const_y),
+                    'font': const_font,
+                    'color': 'black',
+                }
+            ]
+
+            text_data.extend(text_data_extend)
+
+            # 难度标
+            color = (255, 255, 255, 255) # 默认为白色
+            if level_index == 4: 
+                color = (0, 0, 0, 255) # 黑色
+            elif level_index == 3:
+                color = (165, 89, 255, 255) # 紫色
+            elif level_index == 2:
+                color = (255, 0, 0, 255) # 红色
+            elif level_index == 1:
+                color = (255, 192, 0, 255) # 橙色
+            elif level_index == 0:
+                color = (0, 176, 80, 255) # 绿色
+            
+            p5 = (p5_x0 + (index % 5) * delta_x, p5_y0 + (index // 5) * delta_y + new_dy)
+            p6 = (p6_x0 + (index % 5) * delta_x, p6_y0 + (index // 5) * delta_y + new_dy)
+            p7 = (p7_x0 + (index % 5) * delta_x, p7_y0 + (index // 5) * delta_y + new_dy)
+            p8 = (p8_x0 + (index % 5) * delta_x, p8_y0 + (index // 5) * delta_y + new_dy)
+
+            if color != (255, 255, 255, 255):
+                # 绘制平行四边形
+                draw.polygon(
+                    [p5, p6, p7, p8],
+                    fill=color # 填充颜色
+                )
+
+            # FC / AJ / AJC 标
+            if song.get('full_combo') != None:
+                # 添加右下角的等腰梯形缎带
+
+                # 一些补正
+                extra_dx, extra_dy = 0, 0
+                if index % 5 == 1:
+                    extra_dx = -1
+                if index % 5 == 4:
+                    extra_dx = 1
+                if index // 5 == 5:
+                    extra_dy = -1
+                if index //5 == 6:
+                    extra_dy = -1
+
+                p1 = (p1_x0 + (index % 5) * delta_x + extra_dx, p1_y0 + (index // 5) * delta_y + extra_dy + new_dy)
+                p2 = (p2_x0 + (index % 5) * delta_x + extra_dx, p2_y0 + (index // 5) * delta_y + extra_dy + new_dy)
+                p3 = (p3_x0 + (index % 5) * delta_x + extra_dx, p3_y0 + (index // 5) * delta_y + extra_dy + new_dy)
+                p4 = (p4_x0 + (index % 5) * delta_x + extra_dx, p4_y0 + (index // 5) * delta_y + extra_dy + new_dy)
+
+                color = (255, 255, 255, 255) # 默认为白色
+                if song['full_combo'] == 'fullcombo':
+                    color = (86, 236, 24, 255) # 绿色
+                elif song['full_combo'] == 'alljustice':
+                    color = (251, 173, 29, 255) # 橙色
+                elif song['full_combo'] == 'alljusticecritical':
+                    self.paste_gradient_polygon(
+                        canvas,
+                        [p1, p2, p3, p4],
+                        [
+                            (255, 140, 140, 255),  # 柔和红
+                            (255, 170, 150, 255),  # 橙红
+                            (245, 180, 120, 255),  # 橙金
+                            (230, 190, 110, 255),  # 暗橙黄
+                            (200, 200, 130, 255),  # 黄绿
+                            (160, 210, 180, 255),  # 蓝绿
+                            (130, 200, 220, 255),  # 浅蓝
+                            (100, 160, 210, 255),  # 中蓝
+                            (80, 130, 200, 255),   # 深蓝
+                        ],
+                        angle_deg=135
+                    )
+
+                if color != (255, 255, 255, 255):
+                    # 绘制梯形
+                    draw.polygon(
+                        [p1, p2, p3, p4],
+                        fill=color # 填充颜色
+                    )
             
             index += 1
+
+        # 添加文字
+        for item in text_data:
+            draw.text(item['position'], item['text'], 
+                    fill=item['color'], font=item['font'],
+                    anchor=item.get('anchor'))
 
         """
         # 处理曲名
@@ -1000,16 +1427,8 @@ class ImageGenerator:
 
         # 处理定数和物量数字
         num_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 45)
-        num_font.set_variation_by_name('SemiBold')
-
+        num_font.set_variation_by_name('SemiBold')      
         
-        # 文字信息
-        text_data = []
-
-        # 添加文字
-        for item in text_data:
-            draw.text(item['position'], item['text'], 
-                    fill=item['color'], font=item['font'])
         """
         
         # 保存图片

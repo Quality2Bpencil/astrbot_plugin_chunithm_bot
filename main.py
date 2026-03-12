@@ -218,7 +218,11 @@ class ChunithmBot(Star):
             yield event.plain_result("你还未绑定你的账号！")
             return
         data = await self.res_mgr.get_b30(friend_code)
-        image_path = await self.img_gen.create_b30_image(data)
+        player = await self.res_mgr.get_player(friend_code)
+        if data == None or player == None:
+            yield event.plain_result("你的账号数据异常！")
+            return
+        image_path = await self.img_gen.create_b30_image(data, player_name=player.get("name", "CHUNITHM"),)
         yield event.image_result(image_path)
 
     @filter.command("aj30")
