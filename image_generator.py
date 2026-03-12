@@ -891,162 +891,131 @@ class ImageGenerator:
         for item in text_data:
             draw.text(item['position'], item['text'], 
                     fill=item['color'], font=item['font'])
+        
+        # 保存图片
+        if output_path is None:
+            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+            output_path = self.temp_dir / f"song_info_{random_name}.png"
+        
+        canvas.save(output_path, 'PNG', quality=95)
+        return str(output_path)
+
+    async def create_b30_image(self, songs_data, output_path=None):
+        """
+        生成曲目信息图片（复用基础函数）
+        """
+
+        background_path = self.bgs_dir / 'b30.png'
+        
+        # 画布尺寸
+        canvas_width = 1800
+        canvas_height = 2400
+        
+        # 加载背景图片
+        if background_path and os.path.exists(background_path):
+            # 加载背景图片并调整到画布大小
+            background = Image.open(background_path).convert('RGBA')
+            background = background.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+            canvas = background.copy()
+        else:
+            # 没有背景图片，使用纯色背景
+            canvas = Image.new('RGB', (canvas_width, canvas_height), (20, 20, 30))
+
+        # 创建绘图对象（使用RGBA模式支持透明度）
+        draw = ImageDraw.Draw(canvas, 'RGBA')
+        
+        # ========== 曲绘部分 ==========
+        jacket_size = 150
+        jacket_radius = 15
+        jacket_x0 = 36
+        jacket_y0 = 387
+        delta_x = 354
+        delta_y = 182
+        
+        index = 0
+        for song in songs_data.get('bests', []):
+            song_id = song.get('id', 2353) # 其实2353是幻想即兴曲（
+            jacket_path = await self.res_mgr.get_jacket(song_id)
+            
+            jacket_x = jacket_x0 + (index % 5) * delta_x
+            jacket_y = jacket_y0 + (index // 5) * delta_y
+
+            try:
+                # 加载曲绘
+                jacket = Image.open(jacket_path).convert('RGBA')
+                jacket = jacket.resize((jacket_size, jacket_size), Image.Resampling.LANCZOS)
+                
+                # 在处理前先放大图片
+                scale_factor = 2  # 放大2倍
+                temp_size = (jacket_size * scale_factor, jacket_size * scale_factor)
+                jacket = Image.open(jacket_path).convert('RGBA')
+                jacket = jacket.resize(temp_size, Image.Resampling.LANCZOS)  # 使用高质量的缩放
+
+                # 处理圆角和阴影
+                jacket_with_shadow = self.add_rounded_corner_with_outer_blur(
+                    jacket,
+                    corner_radius=jacket_radius * scale_factor,  # 圆角半径也相应放大
+                    blur_radius=5 * scale_factor,
+                    shadow_opacity=110
+                )
+
+                # 最后再缩小回目标尺寸
+                final_size = (jacket_size, jacket_size)
+                jacket_with_shadow = jacket_with_shadow.resize(final_size, Image.Resampling.LANCZOS)
+
+                # 计算偏移（因为有扩展区域）
+                blur_extension = 5 * 3  # blur_radius * 3
+                canvas.paste(
+                    jacket_with_shadow,
+                    (jacket_x - blur_extension, jacket_y - blur_extension),
+                    jacket_with_shadow
+                )
+
+            except Exception as e:
+                # 如果加载失败，画一个灰色矩形
+                fallback = Image.new('RGBA', (jacket_size, jacket_size), (200, 200, 200))
+                canvas.paste(fallback, (jacket_x - 5, jacket_y - 5), fallback)
+                
+                # 添加文字
+                text_img = Image.new('RGBA', (jacket_size, jacket_size), (0, 0, 0, 0))
+                text_draw = ImageDraw.Draw(text_img)
+                text_draw.text((jacket_size//2 - 40, jacket_size//2 - 10), 
+                            "No Image", fill=(100, 100, 100))
+                canvas.paste(text_img, (jacket_x, jacket_y), text_img)
+            
+            index += 1
 
         """
+        # 处理曲名
+        title_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 70)
+        title_text = self.truncate_text_to_fit(draw, song_data.get('title'), title_font, 1050)
+
+        # 处理曲师
+        artist_font = ImageFont.truetype(self.fonts_dir / 'LXGWWenKai-Medium.ttf', 38)
+        artist_text = self.truncate_text_to_fit(draw, song_data.get('artist'), artist_font, 1050)
+
+        # 处理info
+        info_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 36)
+        info_font.set_variation_by_name('Medium')
+
+        # 处理定数和物量数字
+        num_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 45)
+        num_font.set_variation_by_name('SemiBold')
+
         
-        # ========== 标题区域 ==========
-        title_x = jacket_x + jacket_size + 40
-        title_y = jacket_y
-        title_width = main_rect_x + main_rect_width - title_x - 50
-        title_height = 120
-        
-        await self.draw_fancy_rounded_rect(
-            draw,
-            title_x, title_y,
-            title_width, title_height,
-            radius=20,
-            bg_color=(250, 250, 250),
-            border_color=(128, 0, 128),
-            border_width=3,
-            shadow=True,
-            shadow_offset=4,
-            shadow_alpha=30
-        )
-        
-        # 添加文字（复用 add_text_to_image 的逻辑）
-        text_data = [
-            {
-                'text': song_data['title'],
-                'position': (title_x + 20, title_y + 20),
-                'font_size': 32,
-                'color': (0, 0, 0)
-            },
-            {
-                'text': song_data['artist'],
-                'position': (title_x + 20, title_y + 70),
-                'font_size': 20,
-                'color': (80, 80, 80)
-            }
-        ]
-        
-        # 临时实现文字添加（因为 add_text_to_image 返回新图片，这里需要调整）
+        # 文字信息
+        text_data = []
+
+        # 添加文字
         for item in text_data:
             draw.text(item['position'], item['text'], 
-                    fill=item['color'], font_size=item['font_size'])
-        
-        # ========== 元信息区域 ==========
-        meta_x = title_x
-        meta_y = title_y + title_height + 30
-        meta_width = title_width
-        meta_height = 80
-        
-        await self.draw_fancy_rounded_rect(
-            draw,
-            meta_x, meta_y,
-            meta_width, meta_height,
-            radius=20,
-            bg_color=(245, 245, 245),
-            border_color=(128, 0, 128),
-            border_width=2,
-            shadow=True,
-            shadow_offset=3,
-            shadow_alpha=25
-        )
-        
-        # 元信息文字
-        meta_items = [
-            f"ID: {song_data['id']}",
-            f"BPM: {song_data['bpm']}",
-            f"分类: {song_data['category']}",
-            f"版本: {song_data['version']}"
-        ]
-        
-        for i, item in enumerate(meta_items):
-            draw.text((meta_x + 20 + i * 200, meta_y + 30), 
-                    item, fill=(60, 60, 60), font_size=18)
-        
-        # ========== 难度信息区域 ==========
-        diff_x = main_rect_x + 50
-        diff_y = meta_y + meta_height + 40
-        diff_width = main_rect_width - 100
-        diff_height = 400
-        
-        await self.draw_fancy_rounded_rect(
-            draw,
-            diff_x, diff_y,
-            diff_width, diff_height,
-            radius=30,
-            bg_color=(255, 255, 255),
-            border_color=(128, 0, 128),
-            border_width=4,
-            shadow=True,
-            shadow_offset=6,
-            shadow_alpha=40
-        )
-        
-        # 难度标题
-        draw.text((diff_x + 30, diff_y + 20), "难度信息", 
-                fill=(128, 0, 128), font_size=28, font_weight='bold')
-        
-        # 难度列表
-        difficulty_colors = {
-            'BASIC': (68, 140, 80),
-            'ADVANCED': (240, 170, 40),
-            'EXPERT': (220, 70, 70),
-            'MASTER': (170, 70, 200),
-            'ULTIMA': (255, 215, 0)
-        }
-        
-        difficulties = song_data['difficulties']
-        start_x = diff_x + 30
-        start_y = diff_y + 80
-        block_width = 180
-        block_height = 250
-        spacing = 20
-        
-        for i, diff in enumerate(difficulties):
-            x = start_x + i * (block_width + spacing)
-            y = start_y
-            
-            if x + block_width > diff_x + diff_width - 30:
-                break
-            
-            # 为每个难度块添加小框
-            self.draw_fancy_rounded_rect(
-                draw,
-                x, y,
-                block_width, block_height,
-                radius=15,
-                bg_color=(250, 250, 250),
-                border_color=difficulty_colors.get(diff['level'], (150, 150, 150)),
-                border_width=3,
-                shadow=True,
-                shadow_offset=4,
-                shadow_alpha=30
-            )
-            
-            # 难度文字
-            draw.text((x + 15, y + 15), diff['level'], 
-                    fill=(0, 0, 0), font_size=22, font_weight='bold')
-            draw.text((x + 15, y + 60), str(diff['rating']), 
-                    fill=(128, 0, 128), font_size=32, font_weight='bold')
-            draw.text((x + 15, y + 110), f"{diff['notes']} notes", 
-                    fill=(80, 80, 80), font_size=16)
-            
-            if 'charter' in diff and diff['charter']:
-                charter = diff['charter']
-                if len(charter) > 20:
-                    charter = charter[:18] + "..."
-                draw.text((x + 15, y + 150), charter, 
-                        fill=(100, 100, 100), font_size=14)
+                    fill=item['color'], font=item['font'])
         """
         
         # 保存图片
         if output_path is None:
-            import random
-            import string
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"song_info_{random_name}.png"
+            output_path = self.temp_dir / f"b30_{random_name}.png"
         
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)

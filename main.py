@@ -218,8 +218,8 @@ class ChunithmBot(Star):
             yield event.plain_result("你还未绑定你的账号！")
             return
         data = await self.res_mgr.get_b30(friend_code)
-        song = data['bests'][0]['song_name']
-        yield event.plain_result(song)
+        image_path = await self.img_gen.create_b30_image(data)
+        yield event.image_result(image_path)
 
     @filter.command("aj30")
     async def cmd_aj30(self, event: AstrMessageEvent):
@@ -235,6 +235,10 @@ class ChunithmBot(Star):
         parts = full_message.split()
         if len(parts) <= 1 or (len(parts) >= 2 and parts[1] == 'level'):
             data = await self.res_mgr.get_overpower_level(qq_number)
+            reply = ''
+            for key, value in data.items():
+                reply += f"{key}: {value}\n"
+            yield event.plain_result(reply)
         elif parts[1] == 'version':
             pass
     

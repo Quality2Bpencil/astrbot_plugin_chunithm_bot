@@ -431,6 +431,16 @@ class ResourceManager:
         else:
             logger.info("查询b30成功！")
 
+        for score in data.get('bests', []):
+            if 'id' in score:
+                jacket_path = await self.get_jacket(score['id'])
+                score['jacket_path'] = jacket_path
+
+        for score in data.get('new_bests', []):
+            if 'id' in score:
+                jacket_path = await self.get_jacket(score['id'])
+                score['jacket_path'] = jacket_path
+
         return data
         
     async def get_overpower_level(self, qq_number: str, total_time=10):
@@ -445,15 +455,60 @@ class ResourceManager:
             logger.error("查询overpower失败！")
             return None
         
-        score = data[0].get('score', 'fail')
+        score = data[0].get('full_combo', 'fail')
         logger.info(score)
         
         total_op = {}
         user_op = {}
+
+        for song in self.songs:
+            # 紫谱
+            if len(song.get("difficulties",[{}])) >= 4:
+                level = song.get("difficulties",[{}])[3].get("level", '0')
+                const = song.get("difficulties",[{}])[3].get("level_value", 0)
+                if level not in total_op:
+                    total_op[level] = 0
+                total_op[level] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+
+            # 黑谱
+            if len(song.get("difficulties",[{}])) >= 5:
+                level = song.get("difficulties",[{}])[4].get("level", '0')
+                const = song.get("difficulties",[{}])[4].get("level_value", 0)
+                if level not in total_op:
+                    total_op[level] = 0
+                total_op[level] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+
+        op_list = {} # 防止有重复的成绩，dict的格式为：(song_id, level_index): overpower
         
         for score in data:
-            if score.get('level_index') != 3 and score.get('level_index') != 4:
+            song_id = score.get('id')
+            level_index = score.get('level_index')
+            overpower = score.get('over_power')
+            if (level_index != 3 and level_index != 4) or song_id is None or overpower is None:
                 continue
+            
+            if (song_id, level_index) not in op_list:
+                op_list[(song_id, level_index)] = overpower
+            # 如果有重复成绩，保留更好的成绩
+            elif op_list[(song_id, level_index)] < overpower:
+                op_list[(song_id, level_index)] = overpower
+
+        for key, value in op_list.items(): # value 为 op值
+            song_id, level_index = key
+            level = self.song_map[song_id]['difficulties'][level_index].get('level', '0')
+            if level not in user_op:
+                user_op[level] = 0
+            user_op[level] += value
+
+        op_percent = {}
+
+        for key, value in total_op.items():
+            userop = user_op.get(key, 0)
+            op_percent[key] = userop / value
+
+        logger.info("计算OVERPOWER完成")
+
+        return op_percent
         
 class ParamType(Enum):
     LEVEL = 0
