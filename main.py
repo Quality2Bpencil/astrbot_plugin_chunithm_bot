@@ -35,6 +35,7 @@ class ChunithmBot(Star):
         logger.info(f"导入用户数据成功，共 {len(self.res_mgr.user_data)} 个用户账号记录")
 
         self.res_mgr.load_config()
+        logger.info(f"导入config成功！")
 
         self.web_server.start()
         logger.info(f"启动OAuth网页成功")
@@ -270,8 +271,9 @@ class ChunithmBot(Star):
     @filter.command("overpower")
     async def cmd_overpower(self, event: AstrMessageEvent):
         """查询overpower。用法：/overpower"""
+        await self.img_gen.create_overpower_image()
+        return
         qq_number = event.get_sender_id()
-        friend_code = await self.res_mgr.get_friend_code(qq_number)
         full_message = event.message_str
         parts = full_message.split()
         if len(parts) <= 1 or (len(parts) >= 2 and parts[1] == 'level'):
@@ -292,3 +294,9 @@ class ChunithmBot(Star):
         else:
             await self.res_mgr.load_data(force_refresh=True)
             yield event.plain_result(f"数据刷新完成！当前共 {len(self.res_mgr.songs)} 首歌曲")
+
+            self.res_mgr.load_user_data()
+            logger.info(f"导入用户数据成功，共 {len(self.res_mgr.user_data)} 个用户账号记录")
+
+            self.res_mgr.load_config()
+            logger.info(f"导入config成功！")

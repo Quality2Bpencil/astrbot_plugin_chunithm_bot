@@ -147,8 +147,11 @@ class ResourceManager:
                 return result
 
     async def get_access_token(self, qq_number: str):
+        logger.info("进行111：get access token")
         if qq_number not in self.user_data['token']:
             return None
+
+        logger.info("进行222：get access token")
 
         try:
             # 1. 刷新token
@@ -193,6 +196,8 @@ class ResourceManager:
         # 设置超时
         timeout = aiohttp.ClientTimeout(total=30)
         url = "https://maimai.lxns.net/api/v0/oauth/token"
+
+        logger.info("获取刷新令牌……")
         
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(

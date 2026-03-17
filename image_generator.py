@@ -29,86 +29,6 @@ class ImageGenerator:
         self.bgs_dir.mkdir(exist_ok=True)
         self.fonts_dir = self.plugins_dir / "fonts"
         self.fonts_dir.mkdir(exist_ok=True)
-        
-    def add_rounded_corners(self, image, radius):
-        """
-        给图片添加圆角
-        
-        Args:
-            image: PIL Image对象
-            radius: 圆角半径
-            
-        Returns:
-            处理后的PIL Image对象
-        """
-        # 创建圆角蒙版
-        mask = Image.new('L', image.size, 0)
-        draw = ImageDraw.Draw(mask)
-        draw.rounded_rectangle(
-            [(0, 0), image.size],
-            radius=radius,
-            fill=255
-        )
-        
-        # 确保图片有 alpha 通道
-        if image.mode != 'RGBA':
-            image = image.convert('RGBA')
-        
-        # 创建新图片，应用蒙版
-        result = Image.new('RGBA', image.size, (0, 0, 0, 0))
-        result.paste(image, (0, 0), mask)
-        
-        return result
-    
-    def add_shadow(self, image, offset=(5, 5), shadow_color=(0, 0, 0, 128), blur_radius=10):
-        """
-        给图片添加阴影
-        
-        Args:
-            image: PIL Image对象（需要包含alpha通道）
-            offset: 阴影偏移量 (x, y)
-            shadow_color: 阴影颜色 (R, G, B, A)
-            blur_radius: 模糊半径
-            
-        Returns:
-            添加阴影后的PIL Image对象
-        """
-        # 确保图片有alpha通道
-        if image.mode != 'RGBA':
-            image = image.convert('RGBA')
-        
-        # 创建阴影图层
-        shadow = Image.new('RGBA', image.size, shadow_color)
-        
-        # 使用原图的alpha通道作为阴影的蒙版
-        alpha = image.split()[3]
-        shadow.putalpha(alpha)
-        
-        # 创建更大的画布来容纳阴影
-        width, height = image.size
-        shadow_offset_x, shadow_offset_y = offset
-        
-        new_width = width + abs(shadow_offset_x) + blur_radius * 2
-        new_height = height + abs(shadow_offset_y) + blur_radius * 2
-        
-        result = Image.new('RGBA', (new_width, new_height), (0, 0, 0, 0))
-        
-        # 计算位置使阴影居中并应用偏移
-        shadow_x = blur_radius + (shadow_offset_x if shadow_offset_x > 0 else 0)
-        shadow_y = blur_radius + (shadow_offset_y if shadow_offset_y > 0 else 0)
-        
-        # 应用阴影模糊
-        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        
-        # 粘贴阴影
-        result.paste(shadow, (shadow_x, shadow_y), shadow)
-        
-        # 粘贴原图
-        image_x = blur_radius + max(0, -shadow_offset_x)
-        image_y = blur_radius + max(0, -shadow_offset_y)
-        result.paste(image, (image_x, image_y), image)
-        
-        return result
 
     def draw_blurred_text(self, image, position, text, font, fill, blur_radius,
                            blur_color=None, blur_offset=(0, 0), stroke_width=0,
@@ -270,174 +190,58 @@ class ImageGenerator:
         mask_draw.polygon(local_points, fill=255)
 
         canvas.paste(gradient, (min_x, min_y), mask)
-
-    def create_composite_image(self, background_image, images_data, output_path=None):
-        """
-        创建合成图片
-        
-        Args:
-            background_image: 背景图片路径或PIL Image对象
-            images_data: 图片数据列表，每个元素为字典，包含：
-                - 'image': 图片路径或PIL Image对象
-                - 'position': (x, y) 位置
-                - 'size': (width, height) 可选，调整大小
-                - 'radius': 圆角半径，可选
-                - 'shadow': 是否添加阴影，可选
-                - 'shadow_offset': 阴影偏移，可选
-                - 'shadow_blur': 阴影模糊半径，可选
-            output_path: 输出路径，如果不指定则自动生成
-            
-        Returns:
-            生成的图片路径
-        """
-        # 加载背景图片
-        if isinstance(background_image, str):
-            bg = Image.open(background_image).convert('RGBA')
-        else:
-            bg = background_image.convert('RGBA')
-        
-        # 创建画布
-        canvas = bg.copy()
-        
-        # 处理每张图片
-        for img_data in images_data:
-            # 加载图片
-            if isinstance(img_data['image'], str):
-                img = Image.open(img_data['image']).convert('RGBA')
-            else:
-                img = img_data['image'].convert('RGBA')
-            
-            # 调整大小
-            if 'size' in img_data:
-                img = img.resize(img_data['size'], Image.Resampling.LANCZOS)
-            
-            # 添加圆角
-            if 'radius' in img_data and img_data['radius'] > 0:
-                img = self.add_rounded_corners(img, img_data['radius'])
-            
-            # 添加阴影
-            if img_data.get('shadow', False):
-                shadow_offset = img_data.get('shadow_offset', (5, 5))
-                shadow_blur = img_data.get('shadow_blur', 10)
-                img = self.add_shadow(img, shadow_offset, blur_radius=shadow_blur)
-            
-            # 粘贴到画布
-            canvas.paste(img, img_data['position'], img)
-        
-        # 保存图片
-        if output_path is None:
-            # 生成随机文件名
-            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-            output_path = self.temp_dir / f"{random_name}.png"
-        
-        canvas.save(output_path, 'PNG')
-        return str(output_path)
     
-    def add_text_to_image(self, image, text_data):
-        """
-        向图片添加文字
-        
-        Args:
-            image: 图片路径或PIL Image对象
-            text_data: 文字数据，可以是单个字典或字典列表，每个字典包含：
-                - 'text': 文字内容
-                - 'position': (x, y) 位置
-                - 'font_size': 字体大小
-                - 'font_path': 字体路径（可选）
-                - 'color': (R, G, B) 颜色
-                - 'align': 对齐方式（'left', 'center', 'right'）
-                - 'stroke_width': 描边宽度
-                - 'stroke_color': 描边颜色
-                - 'blur_radius': 边缘模糊半径
-                - 'blur_color': 边缘模糊颜色，支持 RGB 或 RGBA
-                - 'blur_offset': 模糊层偏移量 (x, y)
-                
-        Returns:
-            添加文字后的图片路径
-        """
-        # 加载图片
-        if isinstance(image, str):
-            img = Image.open(image).convert('RGBA')
-        else:
-            img = image.convert('RGBA')
-        
-        # 创建绘图对象
-        draw = ImageDraw.Draw(img)
-        
-        # 确保text_data是列表
-        if isinstance(text_data, dict):
-            text_data = [text_data]
-        
-        for text_item in text_data:
-            font = self._load_font_from_text_item(text_item)
+    def draw_shadow_rounded_rect(self, base_img, xy, radius, fill,
+                                    shadow_offset=(8, 8),
+                                    shadow_color=(0, 0, 0, 120),
+                                    blur_radius=12):
+        """在 base_img 上绘制带阴影的圆角矩形。"""
+        x1, y1, x2, y2 = xy
+        shape_w = max(1, x2 - x1)
+        shape_h = max(1, y2 - y1)
 
-            fill_color = text_item.get('color', (0, 0, 0))
-            if isinstance(fill_color, str):
-                fill_color = ImageColor.getrgb(fill_color)
+        shadow_layer = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+        sx = x1 + shadow_offset[0]
+        sy = y1 + shadow_offset[1]
+        shadow_draw.rounded_rectangle(
+            (sx, sy, sx + shape_w, sy + shape_h),
+            radius=radius,
+            fill=shadow_color
+        )
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
 
-            stroke_color = text_item.get('stroke_color', (255, 255, 255))
-            if isinstance(stroke_color, str):
-                stroke_color = ImageColor.getrgb(stroke_color)
+        shape_layer = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
+        shape_draw = ImageDraw.Draw(shape_layer)
+        shape_draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill)
 
-            blur_color = text_item.get('blur_color')
-            if isinstance(blur_color, str):
-                blur_color = ImageColor.getrgb(blur_color)
+        out = Image.alpha_composite(base_img, shadow_layer)
+        out = Image.alpha_composite(out, shape_layer)
+        return out
 
-            stroke_width = text_item.get('stroke_width', 0)
-            
-            # 计算文字位置
-            position = text_item['position']
-            if text_item.get('align') == 'center':
-                # 计算文字宽度以居中
-                bbox = draw.textbbox((0, 0), text_item['text'], font=font)
-                text_width = bbox[2] - bbox[0]
-                position = (position[0] - text_width // 2, position[1])
-            elif text_item.get('align') == 'right':
-                bbox = draw.textbbox((0, 0), text_item['text'], font=font)
-                text_width = bbox[2] - bbox[0]
-                position = (position[0] - text_width, position[1])
+    def draw_shadow_parallelogram(self, base_img, points, fill,
+                                    shadow_offset=(8, 8),
+                                    shadow_color=(0, 0, 0, 140),
+                                    blur_radius=12):
+        """在 base_img 上绘制带阴影的平行四边形。"""
+        shadow_points = [
+            (px + shadow_offset[0], py + shadow_offset[1])
+            for px, py in points
+        ]
 
-            blur_radius = text_item.get('blur_radius', 0)
-            if blur_radius > 0:
-                img = self._draw_blurred_text(
-                    img,
-                    position,
-                    text_item['text'],
-                    font,
-                    fill_color,
-                    blur_radius,
-                    blur_color=blur_color,
-                    blur_offset=text_item.get('blur_offset', (0, 0)),
-                    stroke_width=stroke_width,
-                    stroke_fill=stroke_color
-                )
-                draw = ImageDraw.Draw(img)
-            
-            # 绘制文字
-            if stroke_width > 0:
-                # 带描边的文字
-                draw.text(
-                    position,
-                    text_item['text'],
-                    font=font,
-                    fill=fill_color,
-                    stroke_width=stroke_width,
-                    stroke_fill=stroke_color
-                )
-            else:
-                # 普通文字
-                draw.text(
-                    position,
-                    text_item['text'],
-                    font=font,
-                    fill=fill_color
-                )
-        
-        # 保存图片
-        output_path = self.temp_dir / f"text_{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.png"
-        img.save(output_path, 'PNG')
-        return str(output_path)
-    
+        shadow_layer = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+        shadow_draw.polygon(shadow_points, fill=shadow_color)
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+        shape_layer = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
+        shape_draw = ImageDraw.Draw(shape_layer)
+        shape_draw.polygon(points, fill=fill)
+
+        out = Image.alpha_composite(base_img, shadow_layer)
+        out = Image.alpha_composite(out, shape_layer)
+        return out
+
     def create_grid_image(self, image_paths, output_path=None, 
                       item_size=200,           # 每个原图的大小（正方形边长）
                       bg_padding=20,           # 圆角矩形比原图大出的边距
@@ -1439,6 +1243,168 @@ class ImageGenerator:
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"b30_{random_name}.png"
+        
+        canvas.save(output_path, 'PNG', quality=95)
+        return str(output_path)
+    
+    async def create_overpower_image(self, player_name="CHUNITHM", output_path=None):
+        background_path = self.bgs_dir / 'general_bg.png'
+
+        # 画布尺寸
+        canvas_width = 1200
+        canvas_height = 1600
+
+        # 加载背景图片
+        if background_path and os.path.exists(background_path):
+            # 加载背景图片并调整到画布大小
+            background = Image.open(background_path).convert('RGBA')
+            background = background.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+            canvas = background.copy()
+        else:
+            # 没有背景图片，使用纯色背景
+            canvas = Image.new('RGB', (canvas_width, canvas_height), (20, 20, 30))
+
+        # 确保后续 alpha 合成稳定
+        canvas = canvas.convert('RGBA')
+
+        # 在顶部画一个平行四边形（ID框）
+        frame_base = 400
+        frame_height = 89
+        frame_tan_a = 3
+        p1_x, p1_y = 110, 60
+        p2_x, p2_y = p1_x + frame_base, p1_y
+        p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
+        p4_x, p4_y = p3_x - frame_base, p3_y
+
+        parallelogram_points = [
+            (p1_x, p1_y),
+            (p2_x, p2_y),
+            (p3_x, p3_y),
+            (p4_x, p4_y),
+        ]
+        canvas = self.draw_shadow_parallelogram(
+            canvas,
+            points=parallelogram_points,
+            fill=(255, 255, 255, 235),
+            shadow_offset=(3, 3),
+            shadow_color=(15, 25, 70, 130),
+            blur_radius=10,
+        )
+
+        # 圆角矩形底
+        bg_x0, bg_y0 = 100, 250
+        bg_width = 1000
+        bg_height = 200
+        rect_specs = []
+        bg_spacing = 250
+
+        # 进度条
+        progress_bar_x0 = 10
+        progress_bar_y0 = 120 # 进度条左上角的点在圆角矩形内的相对位置
+        progress_bar_base = 300
+        progress_bar_height = 30
+        progress_bar_tan_a = 3
+        parallelograms = []
+
+        levels = ['14+', '14']
+        index = 0
+
+        for level in levels:
+            # 圆角矩形底
+            rect_specs.append(
+                {
+                    'xy': (bg_x0, bg_y0 + index * bg_spacing, bg_x0 + bg_width, bg_y0 + bg_height + index * bg_spacing),
+                    'radius': 34,
+                    'fill': (255, 255, 255, 255),
+                    'shadow_offset': (3, 3),
+                    'shadow_color': (15, 25, 70, 130),
+                    'blur_radius': 10,
+                }
+            )
+
+            # 进度条
+            p5_x, p5_y = bg_x0 + progress_bar_x0, bg_y0 + progress_bar_y0 + index * bg_spacing
+            p6_x, p6_y = p5_x + progress_bar_base, p5_y
+            p7_x, p7_y = round(p6_x - progress_bar_height / progress_bar_tan_a), p6_y + progress_bar_height
+            p8_x, p8_y = p7_x - progress_bar_base, p7_y
+            parallelogram_points = [
+                (p5_x, p5_y),
+                (p6_x, p6_y),
+                (p7_x, p7_y),
+                (p8_x, p8_y),
+            ]
+            parallelograms.append(
+                {
+                    'points': parallelogram_points,
+                    'fill': (240, 240, 240, 255),
+                    'shadow_offset': (3, 3),
+                    'shadow_color': (15, 25, 70, 130),
+                    'blur_radius': 7,
+                }
+            )
+
+            index += 1
+
+        for spec in rect_specs:
+            canvas = self.draw_shadow_rounded_rect(canvas, **spec)    
+
+        for parallelogram in parallelograms:
+            canvas = self.draw_shadow_parallelogram(canvas, **parallelogram)
+
+        # 玩家昵称
+        name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 48)
+        name_x = 295
+        name_y = 107
+
+        text_data = [
+            {
+                # 昵称
+                'text': unicodedata.normalize("NFKC", player_name), # 全角转半角
+                'position': (name_x, name_y),
+                'font': name_font,
+                'color': 'black',
+                'anchor': 'mm'
+            },
+        ]
+
+        draw = ImageDraw.Draw(canvas, 'RGBA')
+
+        small_base = 20
+
+        # 左侧的绿色平行四边形
+        parallelogram_points = [
+            (p1_x, p1_y),
+            (p1_x + small_base, p2_y),
+            (p4_x + small_base, p3_y),
+            (p4_x, p4_y),
+        ]
+        draw.polygon(
+            parallelogram_points,
+            fill=(0, 204, 107, 255) # 绿色
+        )
+        
+        # 右侧的紫色平行四边形
+        parallelogram_points = [
+            (p2_x - small_base, p1_y),
+            (p2_x, p2_y),
+            (p3_x, p3_y),
+            (p3_x - small_base, p4_y),
+        ]
+        draw.polygon(
+            parallelogram_points,
+            fill=(165, 89, 255, 255) # 紫色
+        )
+
+        # 添加文字
+        for item in text_data:
+            draw.text(item['position'], item['text'], 
+                    fill=item['color'], font=item['font'],
+                    anchor=item.get('anchor'))
+
+        # 保存图片
+        if output_path is None:
+            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+            output_path = self.temp_dir / f"overpower_{random_name}.png"
         
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)
