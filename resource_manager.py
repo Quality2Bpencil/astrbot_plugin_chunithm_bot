@@ -474,57 +474,131 @@ class ResourceManager:
         score = data[0].get('full_combo', 'fail')
         logger.info(score)
         
+        level_list = []
         total_op = {}
         user_op = {}
+        all_cnt = {}
+        ajc_cnt = {}
+        aj_cnt = {}
+        fc_cnt = {}
+        sssp_cnt = {}
+        sss_cnt = {}
 
         for song in self.songs:
             # 紫谱
-            if len(song.get("difficulties",[{}])) >= 4:
-                level = song.get("difficulties",[{}])[3].get("level", '0')
-                const = song.get("difficulties",[{}])[3].get("level_value", 0)
-                if level not in total_op:
+            if len(song.get("difficulties", [{}])) == 4:
+                level = song.get("difficulties", [{}])[3].get("level", '0')
+                const = song.get("difficulties", [{}])[3].get("level_value", 0)
+                if level not in level_list:
+                    level_list.append(level)
                     total_op[level] = 0
+                    user_op[level] = 0
+                    all_cnt[level] = 0
+                    ajc_cnt[level] = 0
+                    aj_cnt[level] = 0
+                    fc_cnt[level] = 0
+                    sssp_cnt[level] = 0
+                    sss_cnt[level] = 0
                 total_op[level] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+                all_cnt[level] += 1
 
             # 黑谱
-            if len(song.get("difficulties",[{}])) >= 5:
-                level = song.get("difficulties",[{}])[4].get("level", '0')
-                const = song.get("difficulties",[{}])[4].get("level_value", 0)
-                if level not in total_op:
+            if len(song.get("difficulties", [{}])) == 5:
+                level = song.get("difficulties", [{}])[4].get("level", '0')
+                const = song.get("difficulties", [{}])[4].get("level_value", 0)
+                if level not in level_list:
+                    level_list.append(level)
                     total_op[level] = 0
+                    user_op[level] = 0
+                    all_cnt[level] = 0
+                    ajc_cnt[level] = 0
+                    aj_cnt[level] = 0
+                    fc_cnt[level] = 0
+                    sssp_cnt[level] = 0
+                    sss_cnt[level] = 0
                 total_op[level] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+                all_cnt[level] += 1
 
-        op_list = {} # 防止有重复的成绩，dict的格式为：(song_id, level_index): overpower
+        op_list = {} # 防止有重复的成绩，dict的格式为：(song_id, level_index): (overpower, full_combo, rank)
         
         for score in data:
             song_id = score.get('id')
             level_index = score.get('level_index')
             overpower = score.get('over_power')
+            full_combo = score.get('full_combo')
+            rank = score.get('rank')
             if (level_index != 3 and level_index != 4) or song_id is None or overpower is None:
+                continue
+            # 必须要是最高难度
+            if level_index != len(self.song_map[song_id].get("difficulties", [])) - 1:
                 continue
             
             if (song_id, level_index) not in op_list:
-                op_list[(song_id, level_index)] = overpower
+                op_list[(song_id, level_index)] = (overpower, full_combo, rank)
             # 如果有重复成绩，保留更好的成绩
-            elif op_list[(song_id, level_index)] < overpower:
-                op_list[(song_id, level_index)] = overpower
+            elif op_list[(song_id, level_index)][0] < overpower:
+                op_list[(song_id, level_index)] = (overpower, full_combo, rank)
 
-        for key, value in op_list.items(): # value 为 op值
+        for key, value in op_list.items(): # value 为 (overpower, full_combo, rank)
             song_id, level_index = key
+            overpower, full_combo, rank = value
             level = self.song_map[song_id]['difficulties'][level_index].get('level', '0')
-            if level not in user_op:
-                user_op[level] = 0
-            user_op[level] += value
 
-        op_percent = {}
+            user_op[level] += overpower
 
-        for key, value in total_op.items():
-            userop = user_op.get(key, 0)
-            op_percent[key] = userop / value
+            if full_combo == "alljusticecritical":
+                ajc_cnt[level] += 1
+                aj_cnt[level] += 1
+                fc_cnt[level] += 1
+            elif full_combo == "alljustice":
+                aj_cnt[level] += 1
+                fc_cnt[level] += 1
+            elif full_combo == "fullcombo":
+                fc_cnt[level] += 1
+
+            if rank == "sssp":
+                sssp_cnt[level] += 1
+                sss_cnt[level] += 1
+            elif rank == "sss":
+                sss_cnt[level] += 1
+
+        result = {
+            "ALL": {
+                "all": 0,
+                "ajc": 0,
+                "aj": 0,
+                "fc": 0,
+                "sssp": 0,
+                "sss": 0,
+                "user_op": 0,
+                "total_op": 0
+            }
+        }
+        level_list.sort(reverse=True)
+        
+        for level in level_list:
+            result[level] = {
+                "all": all_cnt[level],
+                "ajc": ajc_cnt[level],
+                "aj": aj_cnt[level],
+                "fc": fc_cnt[level],
+                "sssp": sssp_cnt[level],
+                "sss": sss_cnt[level],
+                "user_op": user_op[level],
+                "total_op": total_op[level]
+            }
+            result["ALL"]['all'] += all_cnt[level]
+            result["ALL"]['ajc'] += ajc_cnt[level]
+            result["ALL"]['aj'] += aj_cnt[level]
+            result["ALL"]['fc'] += fc_cnt[level]
+            result["ALL"]['sssp'] += sssp_cnt[level]
+            result["ALL"]['sss'] += sss_cnt[level]
+            result["ALL"]['user_op'] += user_op[level]
+            result["ALL"]['total_op'] += total_op[level]
 
         logger.info("计算OVERPOWER完成")
 
-        return op_percent
+        return result
     
     async def get_max_best(self):
         b30_list = []

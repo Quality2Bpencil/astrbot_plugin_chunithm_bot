@@ -271,17 +271,21 @@ class ChunithmBot(Star):
     @filter.command("overpower")
     async def cmd_overpower(self, event: AstrMessageEvent):
         """查询overpower。用法：/overpower"""
-        await self.img_gen.create_overpower_image()
-        return
         qq_number = event.get_sender_id()
+        friend_code = await self.res_mgr.get_friend_code(qq_number)
+        if friend_code is None:
+            yield event.plain_result("你还未绑定你的账号！")
+            return
         full_message = event.message_str
         parts = full_message.split()
         if len(parts) <= 1 or (len(parts) >= 2 and parts[1] == 'level'):
             data = await self.res_mgr.get_overpower_level(qq_number)
-            reply = ''
-            for key, value in data.items():
-                reply += f"{key}: {value}\n"
-            yield event.plain_result(reply)
+            player = await self.res_mgr.get_player(friend_code)
+            if data is None or player is None:
+                yield event.plain_result("你的账号数据异常！")
+                return
+            image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"))
+            yield event.image_result(image_path)
         elif parts[1] == 'version':
             pass
     

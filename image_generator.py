@@ -1247,12 +1247,12 @@ class ImageGenerator:
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)
     
-    async def create_overpower_image(self, player_name="CHUNITHM", output_path=None):
+    async def create_overpower_image(self, data, player_name="CHUNITHM", output_path=None):
         background_path = self.bgs_dir / 'general_bg.png'
 
         # 画布尺寸
         canvas_width = 1200
-        canvas_height = 1600
+        canvas_height = 3230
 
         # 加载背景图片
         if background_path and os.path.exists(background_path):
@@ -1292,24 +1292,21 @@ class ImageGenerator:
         )
 
         # 圆角矩形底
-        bg_x0, bg_y0 = 100, 250
-        bg_width = 1000
-        bg_height = 200
+        bg_x0, bg_y0 = 90, 220
+        bg_width = 1020
+        bg_height = 175
         rect_specs = []
-        bg_spacing = 250
+        bg_spacing = 230
 
         # 进度条
-        progress_bar_x0 = 10
-        progress_bar_y0 = 120 # 进度条左上角的点在圆角矩形内的相对位置
-        progress_bar_base = 300
-        progress_bar_height = 30
+        progress_bar_x0 = 60
+        progress_bar_y0 = 100 # 进度条左上角的点在圆角矩形内的相对位置
+        progress_bar_base = 915
+        progress_bar_height = 45
         progress_bar_tan_a = 3
         parallelograms = []
 
-        levels = ['14+', '14']
-        index = 0
-
-        for level in levels:
+        for index in range(len(data)):
             # 圆角矩形底
             rect_specs.append(
                 {
@@ -1342,8 +1339,6 @@ class ImageGenerator:
                     'blur_radius': 7,
                 }
             )
-
-            index += 1
 
         for spec in rect_specs:
             canvas = self.draw_shadow_rounded_rect(canvas, **spec)    
@@ -1394,6 +1389,151 @@ class ImageGenerator:
             parallelogram_points,
             fill=(165, 89, 255, 255) # 紫色
         )
+
+        level_sign_x0 = 45
+        level_sign_y0 = 30
+        level_sign_base = 13
+        level_sign_height = 40
+        level_sign_tan_a = 3
+        level_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 40)
+        level_font.set_variation_by_name('SemiBold')
+
+        small_para_x0 = 160
+        small_para_y0 = 26
+        small_para_base = 7
+        small_para_height = 21
+        small_para_tan_a = 3
+        small_para_spacing = 95
+        small_para_color = [
+            (0, 0, 0, 255), # 黑色
+            (236, 48, 138, 255), # 玫红色
+            (235, 155, 15, 255), # 橙色
+            (70, 210, 20, 255), # 绿色
+            (236, 48, 138, 255), # 玫红色
+            (235, 155, 15, 255), # 橙色
+            (0, 0, 0, 255), # 黑色
+        ]
+
+        small_texts = ["ALL", "AJC", "AJ", "FC", "SSS+", "SSS", "OVERPOWER"]
+        small_text_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 22)
+        small_texts_list = ["all", "ajc", "aj", "fc", "sssp", "sss"]
+
+        num_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 30)
+        num_font.set_variation_by_name('SemiBold')
+
+        op_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 26)
+        op_font.set_variation_by_name('SemiBold')
+
+        # 进度条的进度
+        progress_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 34)
+        progress_font.set_variation_by_name('SemiBold')
+
+        index = 0
+
+        # 添加一些普通的平行四边形 以及 文字
+        for key, value in data.items():
+            # key 是 level，value 是 对应数据
+            p9_x, p9_y = bg_x0 + level_sign_x0, bg_y0 + level_sign_y0 + index * bg_spacing
+            p10_x, p10_y = p9_x + level_sign_base, p9_y
+            p11_x, p11_y = round(p10_x - level_sign_height / level_sign_tan_a), p10_y + level_sign_height
+            p12_x, p12_y = p11_x - level_sign_base, p11_y
+            parallelogram_points = [
+                (p9_x, p9_y),
+                (p10_x, p10_y),
+                (p11_x, p11_y),
+                (p12_x, p12_y),
+            ]
+            draw.polygon(
+                parallelogram_points,
+                fill=(165, 89, 255, 255) # 紫色
+            )
+
+            text_data.append(
+                {
+                    # 等级
+                    'text': key,
+                    'position': (p9_x + 18, p9_y - 3),
+                    'font': level_font,
+                    'color': 'black',
+                }
+            )
+
+            # 进度条
+            progress_base = min(int(progress_bar_base * value['user_op'] / value['total_op']), progress_bar_base)
+            p5_x, p5_y = bg_x0 + progress_bar_x0, bg_y0 + progress_bar_y0 + index * bg_spacing
+            p6_x, p6_y = p5_x + progress_base, p5_y
+            p7_x, p7_y = round(p6_x - progress_bar_height / progress_bar_tan_a), p6_y + progress_bar_height
+            p8_x, p8_y = p7_x - progress_base, p7_y
+            parallelogram_points = [
+                (p5_x, p5_y),
+                (p6_x, p6_y),
+                (p7_x, p7_y),
+                (p8_x, p8_y),
+            ]
+            draw.polygon(
+                parallelogram_points,
+                fill=(86, 236, 24, 255), # 绿色
+            )
+
+            text_data.append(
+                {
+                    # OP百分比
+                    'text': f"{math.floor(value['user_op'] / value['total_op'] * 10000 + 1e-10) / 100}%",
+                    'position': (round((p5_x + p5_x + progress_bar_base) / 2), (p5_y + p7_y) // 2),
+                    'font': progress_font,
+                    'color': 'black',
+                    'anchor': 'mm',
+                }
+            )
+
+            for Index in range(7):
+                p13_x, p13_y = bg_x0 + small_para_x0 + Index * small_para_spacing, bg_y0 + small_para_y0 + index * bg_spacing
+                p14_x, p14_y = p13_x + small_para_base, p13_y
+                p15_x, p15_y = round(p14_x - small_para_height / small_para_tan_a), p14_y + small_para_height
+                p16_x, p16_y = p15_x - small_para_base, p15_y
+                parallelogram_points = [
+                    (p13_x, p13_y),
+                    (p14_x, p14_y),
+                    (p15_x, p15_y),
+                    (p16_x, p16_y),
+                ]
+                draw.polygon(
+                    parallelogram_points,
+                    fill=small_para_color[Index]
+                )
+
+                text_data.append(
+                    {
+                        # 小标题
+                        'text': small_texts[Index],
+                        'position': (p13_x + 12, p13_y - 2),
+                        'font': small_text_font,
+                        'color': 'black',
+                    }
+                )
+
+                if Index < 6:
+                    text_data.append(
+                        {
+                            # 数字
+                            'text': str(value[small_texts_list[Index]]),
+                            'position': (p13_x + 10, p13_y + 21),
+                            'font': num_font,
+                            'color': 'black',
+                        }
+                    )
+                else:
+                    text_data.append(
+                        {
+                            # OVERPOWER数字
+                            'text': f"{value['user_op']:.2f} / {value['total_op']:.2f}",
+                            'position': (p13_x + 10, p13_y + 23),
+                            'font': op_font,
+                            'color': 'black',
+                        }
+                    )
+
+            index += 1
 
         # 添加文字
         for item in text_data:
