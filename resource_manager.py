@@ -29,6 +29,37 @@ class ResourceManager:
         self.developer_api_key = ""
         self.oauth_app = {}
         self.config_file = self.plugin_dir / "config.json"
+        self.version_abbr_map = {
+            10000: "ORI",
+            10500: "ORI+",
+            11000: "AIR",
+            11500: "AIR+",
+            12000: "STAR",
+            12500: "STAR+",
+            13000: "AMZ",
+            13500: "AMZ+",
+            14000: "CRY",
+            14500: "CRY+",
+            15000: "PARA",
+            15500: "PARA×",
+            20000: "NEW",
+            20500: "NEW+",
+            21000: "SUN",
+            21500: "SUN+",
+            22000: "LMN",
+            22500: "LMN+",
+            23000: "VRS",
+            23500: "VRSX"
+        }
+        self.genre_abbr_map = {
+            "流行 & 动漫": "P&A",
+            "niconico": "nico",
+            "东方Project": "东方",
+            "其他游戏": "其他",
+            "彩绿": "彩绿",
+            "音击舞萌": "击舞",
+            "原创": "原创"
+        }
 
     def load_config(self):
         """获取开发者API密钥与OAuth应用信息"""
@@ -471,8 +502,8 @@ class ResourceManager:
             logger.error("查询overpower失败！")
             return None
         
-        score = data[0].get('full_combo', 'fail')
-        logger.info(score)
+        #score = data[0]
+        #logger.info(f"overpwer: {score.get('over_power', 0)}")
         
         level_list = []
         total_op = {}
@@ -524,7 +555,7 @@ class ResourceManager:
         for score in data:
             song_id = score.get('id')
             level_index = score.get('level_index')
-            overpower = score.get('over_power')
+            overpower = self.calc_overpower(score)
             full_combo = score.get('full_combo')
             rank = score.get('rank')
             if (level_index != 3 and level_index != 4) or song_id is None or overpower is None:
@@ -599,6 +630,301 @@ class ResourceManager:
         logger.info("计算OVERPOWER完成")
 
         return result
+    
+    async def get_overpower_version(self, qq_number: str, total_time=10):
+        token_data = await self.get_access_token(qq_number)
+        url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
+        headers = {
+            "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
+        }
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+
+        if data == None:
+            logger.error("查询overpower失败！")
+            return None
+        
+        version_list = []
+        total_op = {}
+        user_op = {}
+        all_cnt = {}
+        ajc_cnt = {}
+        aj_cnt = {}
+        fc_cnt = {}
+        sssp_cnt = {}
+        sss_cnt = {}
+
+        for song in self.songs:
+            # 紫谱
+            if len(song.get("difficulties", [{}])) == 4:
+                version = song.get("difficulties", [{}])[3].get("version", '0')
+                const = song.get("difficulties", [{}])[3].get("level_value", 0)
+                if version not in version_list:
+                    version_list.append(version)
+                    total_op[version] = 0
+                    user_op[version] = 0
+                    all_cnt[version] = 0
+                    ajc_cnt[version] = 0
+                    aj_cnt[version] = 0
+                    fc_cnt[version] = 0
+                    sssp_cnt[version] = 0
+                    sss_cnt[version] = 0
+                total_op[version] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+                all_cnt[version] += 1
+
+            # 黑谱
+            if len(song.get("difficulties", [{}])) == 5:
+                version = song.get("difficulties", [{}])[4].get("version", '0')
+                const = song.get("difficulties", [{}])[4].get("level_value", 0)
+                if version not in version_list:
+                    version_list.append(version)
+                    total_op[version] = 0
+                    user_op[version] = 0
+                    all_cnt[version] = 0
+                    ajc_cnt[version] = 0
+                    aj_cnt[version] = 0
+                    fc_cnt[version] = 0
+                    sssp_cnt[version] = 0
+                    sss_cnt[version] = 0
+                total_op[version] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+                all_cnt[version] += 1
+
+        op_list = {} # 防止有重复的成绩，dict的格式为：song_id: (overpower, full_combo, rank)
+        
+        for score in data:
+            song_id = score.get('id')
+            level_index = score.get('level_index')
+            overpower = self.calc_overpower(score)
+            full_combo = score.get('full_combo')
+            rank = score.get('rank')
+            if (level_index != 3 and level_index != 4) or song_id is None or overpower is None:
+                continue
+            # 必须要是最高难度
+            if level_index != len(self.song_map[song_id].get("difficulties", [])) - 1:
+                continue
+
+            if song_id not in op_list:
+                op_list[song_id] = (overpower, full_combo, rank)
+            # 如果有重复成绩，保留更好的成绩
+            elif op_list[song_id][0] < overpower:
+                op_list[song_id] = (overpower, full_combo, rank)
+
+        for key, value in op_list.items(): # value 为 (overpower, full_combo, rank)
+            song_id = key
+            overpower, full_combo, rank = value
+            version = self.song_map[song_id].get('version', 0)
+
+            user_op[version] += overpower
+
+            if full_combo == "alljusticecritical":
+                ajc_cnt[version] += 1
+                aj_cnt[version] += 1
+                fc_cnt[version] += 1
+            elif full_combo == "alljustice":
+                aj_cnt[version] += 1
+                fc_cnt[version] += 1
+            elif full_combo == "fullcombo":
+                fc_cnt[version] += 1
+
+            if rank == "sssp":
+                sssp_cnt[version] += 1
+                sss_cnt[version] += 1
+            elif rank == "sss":
+                sss_cnt[version] += 1
+
+        result = {
+            "ALL": {
+                "all": 0,
+                "ajc": 0,
+                "aj": 0,
+                "fc": 0,
+                "sssp": 0,
+                "sss": 0,
+                "user_op": 0,
+                "total_op": 0
+            }
+        }
+        version_list.sort()
+        
+        for version in version_list:
+            result[version] = {
+                "all": all_cnt[version],
+                "ajc": ajc_cnt[version],
+                "aj": aj_cnt[version],
+                "fc": fc_cnt[version],
+                "sssp": sssp_cnt[version],
+                "sss": sss_cnt[version],
+                "user_op": user_op[version],
+                "total_op": total_op[version]
+            }
+            result["ALL"]['all'] += all_cnt[version]
+            result["ALL"]['ajc'] += ajc_cnt[version]
+            result["ALL"]['aj'] += aj_cnt[version]
+            result["ALL"]['fc'] += fc_cnt[version]
+            result["ALL"]['sssp'] += sssp_cnt[version]
+            result["ALL"]['sss'] += sss_cnt[version]
+            result["ALL"]['user_op'] += user_op[version]
+            result["ALL"]['total_op'] += total_op[version]
+
+        logger.info("计算OVERPOWER完成")
+
+        return result
+    
+    async def get_overpower_genre(self, qq_number: str, total_time=10):
+        token_data = await self.get_access_token(qq_number)
+        url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
+        headers = {
+            "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
+        }
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+
+        if data == None:
+            logger.error("查询overpower失败！")
+            return None
+        
+        genre_list = []
+        total_op = {}
+        user_op = {}
+        all_cnt = {}
+        ajc_cnt = {}
+        aj_cnt = {}
+        fc_cnt = {}
+        sssp_cnt = {}
+        sss_cnt = {}
+
+        for song in self.songs:
+            # 紫谱
+            if len(song.get("difficulties", [{}])) == 4:
+                genre = song.get("genre", '未知')
+                const = song.get("difficulties", [{}])[3].get("level_value", 0)
+                if genre not in genre_list:
+                    genre_list.append(genre)
+                    total_op[genre] = 0
+                    user_op[genre] = 0
+                    all_cnt[genre] = 0
+                    ajc_cnt[genre] = 0
+                    aj_cnt[genre] = 0
+                    fc_cnt[genre] = 0
+                    sssp_cnt[genre] = 0
+                    sss_cnt[genre] = 0
+                total_op[genre] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+                all_cnt[genre] += 1
+
+            # 黑谱
+            if len(song.get("difficulties", [{}])) == 5:
+                genre = song.get("genre", '未知')
+                const = song.get("difficulties", [{}])[4].get("level_value", 0)
+                if genre not in genre_list:
+                    genre_list.append(genre)
+                    total_op[genre] = 0
+                    user_op[genre] = 0
+                    all_cnt[genre] = 0
+                    ajc_cnt[genre] = 0
+                    aj_cnt[genre] = 0
+                    fc_cnt[genre] = 0
+                    sssp_cnt[genre] = 0
+                    sss_cnt[genre] = 0
+                total_op[genre] += (const + 3) * 5 # 单曲理论值OP = (定数 + 3) * 5
+                all_cnt[genre] += 1
+
+        genre_list = ["流行 & 动漫", "niconico", "东方Project", "其他游戏", "彩绿", "音击舞萌", "原创"]
+        op_list = {} # 防止有重复的成绩，dict的格式为：song_id: (overpower, full_combo, rank)
+        
+        for score in data:
+            song_id = score.get('id')
+            level_index = score.get('level_index')
+            overpower = self.calc_overpower(score)
+            full_combo = score.get('full_combo')
+            rank = score.get('rank')
+            if (level_index != 3 and level_index != 4) or song_id is None or overpower is None:
+                continue
+            # 必须要是最高难度
+            if level_index != len(self.song_map[song_id].get("difficulties", [])) - 1:
+                continue
+
+            if song_id not in op_list:
+                op_list[song_id] = (overpower, full_combo, rank)
+            # 如果有重复成绩，保留更好的成绩
+            elif op_list[song_id][0] < overpower:
+                op_list[song_id] = (overpower, full_combo, rank)
+
+        for key, value in op_list.items(): # value 为 (overpower, full_combo, rank)
+            song_id = key
+            overpower, full_combo, rank = value
+            genre = self.song_map[song_id].get('genre', '未知')
+
+            user_op[genre] += overpower
+
+            if full_combo == "alljusticecritical":
+                ajc_cnt[genre] += 1
+                aj_cnt[genre] += 1
+                fc_cnt[genre] += 1
+            elif full_combo == "alljustice":
+                aj_cnt[genre] += 1
+                fc_cnt[genre] += 1
+            elif full_combo == "fullcombo":
+                fc_cnt[genre] += 1
+
+            if rank == "sssp":
+                sssp_cnt[genre] += 1
+                sss_cnt[genre] += 1
+            elif rank == "sss":
+                sss_cnt[genre] += 1
+
+        result = {
+            "ALL": {
+                "all": 0,
+                "ajc": 0,
+                "aj": 0,
+                "fc": 0,
+                "sssp": 0,
+                "sss": 0,
+                "user_op": 0,
+                "total_op": 0
+            }
+        }
+        
+        for genre in genre_list:
+            result[genre] = {
+                "all": all_cnt[genre],
+                "ajc": ajc_cnt[genre],
+                "aj": aj_cnt[genre],
+                "fc": fc_cnt[genre],
+                "sssp": sssp_cnt[genre],
+                "sss": sss_cnt[genre],
+                "user_op": user_op[genre],
+                "total_op": total_op[genre]
+            }
+            result["ALL"]['all'] += all_cnt[genre]
+            result["ALL"]['ajc'] += ajc_cnt[genre]
+            result["ALL"]['aj'] += aj_cnt[genre]
+            result["ALL"]['fc'] += fc_cnt[genre]
+            result["ALL"]['sssp'] += sssp_cnt[genre]
+            result["ALL"]['sss'] += sss_cnt[genre]
+            result["ALL"]['user_op'] += user_op[genre]
+            result["ALL"]['total_op'] += total_op[genre]
+
+        logger.info("计算OVERPOWER完成")
+
+        return result
+    
+    def calc_overpower(self, score) -> float:
+        score_point = score.get('score', 0)
+        level_index = score.get('level_index', 0)
+        song_id = score.get('id', 0)
+        const = self.song_map[song_id]['difficulties'][level_index].get('level_value', 0)
+        rating = score.get('rating', 0)
+        full_combo = score.get('full_combo', '')
+        fc_bonus = 0
+        if full_combo == "alljusticecritical":
+            fc_bonus = 1.25
+        elif full_combo == "alljustice":
+            fc_bonus = 1
+        elif full_combo == "fullcombo":
+            fc_bonus = 0.5
+        if score_point < 1007500:
+            return rating * 5 + fc_bonus
+        else:
+            return (const + 2) * 5 + fc_bonus + (score_point - 1007500) * 0.0015
     
     async def get_max_best(self):
         b30_list = []

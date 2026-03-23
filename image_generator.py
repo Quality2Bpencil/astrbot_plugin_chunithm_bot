@@ -1247,12 +1247,14 @@ class ImageGenerator:
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)
     
-    async def create_overpower_image(self, data, player_name="CHUNITHM", output_path=None):
+    async def create_overpower_image(self, data, player_name="CHUNITHM", arg="level", output_path=None):
         background_path = self.bgs_dir / 'general_bg.png'
 
         # 画布尺寸
+        line_num = len(data)
+        bg_spacing = 230
         canvas_width = 1200
-        canvas_height = 3230
+        canvas_height = 240 + line_num * bg_spacing
 
         # 加载背景图片
         if background_path and os.path.exists(background_path):
@@ -1296,7 +1298,6 @@ class ImageGenerator:
         bg_width = 1020
         bg_height = 175
         rect_specs = []
-        bg_spacing = 230
 
         # 进度条
         progress_bar_x0 = 60
@@ -1390,15 +1391,31 @@ class ImageGenerator:
             fill=(165, 89, 255, 255) # 紫色
         )
 
-        level_sign_x0 = 45
-        level_sign_y0 = 30
-        level_sign_base = 13
-        level_sign_height = 40
         level_sign_tan_a = 3
-        level_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 40)
+        if arg == "level":
+            level_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 40)
+            level_sign_x0 = 45
+            level_sign_y0 = 30
+            level_sign_base = 13
+            level_sign_height = 40
+        elif arg == "version":
+            level_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 33)
+            level_sign_x0 = 35
+            level_sign_y0 = 35
+            level_sign_base = 11
+            level_sign_height = 34
+        if arg == "genre":
+            level_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 36)
+            level_sign_x0 = 45
+            level_sign_y0 = 30
+            level_sign_base = 12
+            level_sign_height = 37
         level_font.set_variation_by_name('SemiBold')
 
-        small_para_x0 = 160
+        if arg == "level" or arg == "genre":
+            small_para_x0 = 160
+        elif arg == "version":
+            small_para_x0 = 165
         small_para_y0 = 26
         small_para_base = 7
         small_para_height = 21
@@ -1448,15 +1465,36 @@ class ImageGenerator:
                 fill=(165, 89, 255, 255) # 紫色
             )
 
-            text_data.append(
-                {
-                    # 等级
-                    'text': key,
-                    'position': (p9_x + 18, p9_y - 3),
-                    'font': level_font,
-                    'color': 'black',
-                }
-            )
+            if arg == "level":
+                text_data.append(
+                    {
+                        # 等级
+                        'text': key,
+                        'position': (p9_x + 18, p9_y - 3),
+                        'font': level_font,
+                        'color': 'black',
+                    }
+                )
+            elif arg == "version":
+                text_data.append(
+                    {
+                        # 版本
+                        'text': self.res_mgr.version_abbr_map.get(key, key),
+                        'position': (p9_x + 15, p9_y - 1),
+                        'font': level_font,
+                        'color': 'black',
+                    }
+                )
+            elif arg == "genre":
+                text_data.append(
+                    {
+                        # 分类
+                        'text': self.res_mgr.genre_abbr_map.get(key, key),
+                        'position': (p9_x + 17, p9_y - 1),
+                        'font': level_font,
+                        'color': 'black',
+                    }
+                )
 
             # 进度条
             progress_base = min(int(progress_bar_base * value['user_op'] / value['total_op']), progress_bar_base)
@@ -1478,7 +1516,7 @@ class ImageGenerator:
             text_data.append(
                 {
                     # OP百分比
-                    'text': f"{math.floor(value['user_op'] / value['total_op'] * 10000 + 1e-10) / 100}%",
+                    'text': f"{math.floor(value['user_op'] / value['total_op'] * 10000 + 1e-10) / 10000:.2%}",
                     'position': (round((p5_x + p5_x + progress_bar_base) / 2), (p5_y + p7_y) // 2),
                     'font': progress_font,
                     'color': 'black',
@@ -1526,7 +1564,7 @@ class ImageGenerator:
                     text_data.append(
                         {
                             # OVERPOWER数字
-                            'text': f"{value['user_op']:.2f} / {value['total_op']:.2f}",
+                            'text': f"{value['user_op']:.2f} / {value['total_op']:.1f}",
                             'position': (p13_x + 10, p13_y + 23),
                             'font': op_font,
                             'color': 'black',

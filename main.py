@@ -284,11 +284,25 @@ class ChunithmBot(Star):
             if data is None or player is None:
                 yield event.plain_result("你的账号数据异常！")
                 return
-            image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"))
+            image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="level")
             yield event.image_result(image_path)
-        elif parts[1] == 'version':
-            pass
-    
+        elif parts[1] == 'version' or parts[1] == 'ver':
+            data = await self.res_mgr.get_overpower_version(qq_number)
+            player = await self.res_mgr.get_player(friend_code)
+            if data is None or player is None:
+                yield event.plain_result("你的账号数据异常！")
+                return
+            image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="version")
+            yield event.image_result(image_path)
+        elif parts[1] == 'genre' or parts[1] == 'type':
+            data = await self.res_mgr.get_overpower_genre(qq_number)
+            player = await self.res_mgr.get_player(friend_code)
+            if data is None or player is None:
+                yield event.plain_result("你的账号数据异常！")
+                return
+            image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="genre")
+            yield event.image_result(image_path)
+
     @filter.command("s_refresh")
     async def cmd_refresh(self, event: AstrMessageEvent):
         '''手动刷新数据（管理员用）'''
