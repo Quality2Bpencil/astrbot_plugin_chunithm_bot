@@ -34,8 +34,8 @@ class OAuthWebServer:
         @self.app.route('/')
         def home():
             """首页 - 获取授权码"""
-            state = request.args.get('state') # 用户QQ号
-            code = request.args.get('code') # 授权码
+            state = (request.args.get('state') or '').strip() # 用户QQ号
+            code = (request.args.get('code') or '').strip() # 授权码
             
             if code and state:
                 # 如果有 code 和 state，说明是授权回调

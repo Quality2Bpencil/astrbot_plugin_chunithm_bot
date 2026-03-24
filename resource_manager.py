@@ -87,6 +87,10 @@ class ResourceManager:
             self.level_map[str(level)] = (level - 1e-6, level + 0.4 + 1e-6)
             self.level_map[str(level) + '+'] = (level + 0.5 - 1e-6, level + 0.9 + 1e-6)
 
+    def _normalize_qq(self, qq_number) -> str:
+        """统一QQ号格式，避免空白字符导致查不到同一用户。"""
+        return str(qq_number).strip()
+
     def load_config(self):
         """获取开发者API密钥与OAuth应用信息"""
         if self.config_file.exists():
@@ -123,7 +127,7 @@ class ResourceManager:
 
     def get_token(self, qq_number: str):
         """从数据库获取token"""
-        qq_number = str(qq_number)
+        qq_number = self._normalize_qq(qq_number)
         try:
             with sqlite3.connect(self.db_file) as conn:
                 cursor = conn.execute(
@@ -133,6 +137,15 @@ class ResourceManager:
                 row = cursor.fetchone()
                 if row:
                     return json.loads(row[0])
+
+                # 读不到时输出少量样本，帮助定位“写入键和查询键不一致”问题
+                sample_rows = conn.execute(
+                    'SELECT qq_number FROM tokens ORDER BY updated_at DESC LIMIT 5'
+                ).fetchall()
+                sample_keys = [item[0] for item in sample_rows]
+                logger.warning(
+                    f"用户 {qq_number} 在DB中无token记录，DB路径: {self.db_file}，现有样本QQ: {sample_keys}"
+                )
             return None
         except Exception as e:
             logger.error(f"读取token失败 ({qq_number}): {e}")
@@ -140,16 +153,29 @@ class ResourceManager:
 
     def save_token(self, qq_number: str, token_data: dict):
         """保存token到数据库"""
-        qq_number = str(qq_number)
+        qq_number = self._normalize_qq(qq_number)
         try:
             with self.db_lock:
                 with sqlite3.connect(self.db_file) as conn:
+                    payload = json.dumps(token_data, ensure_ascii=False)
                     conn.execute(
-                        'INSERT OR REPLACE INTO tokens VALUES (?, ?, ?)',
-                        (qq_number, json.dumps(token_data), int(time.time()))
+                        'INSERT OR REPLACE INTO tokens (qq_number, token_data, updated_at) VALUES (?, ?, ?)',
+                        (qq_number, payload, int(time.time()))
                     )
                     conn.commit()
-            logger.info(f"Token已保存 ({qq_number}) -> {self.db_file}")
+
+                    verify = conn.execute(
+                        'SELECT LENGTH(token_data), updated_at FROM tokens WHERE qq_number = ?',
+                        (qq_number,)
+                    ).fetchone()
+
+            if not verify:
+                logger.error(f"Token写入后回读失败 ({qq_number}) -> {self.db_file}")
+                return False
+
+            logger.info(
+                f"Token已保存并验证 ({qq_number}) -> {self.db_file}, token_len={verify[0]}, updated_at={verify[1]}"
+            )
             return True
         except Exception as e:
             logger.error(f"保存token失败 ({qq_number}): {e}")
@@ -157,7 +183,7 @@ class ResourceManager:
 
     def get_friend_code_from_db(self, qq_number: str):
         """从数据库获取好友码"""
-        qq_number = str(qq_number)
+        qq_number = self._normalize_qq(qq_number)
         try:
             with sqlite3.connect(self.db_file) as conn:
                 cursor = conn.execute(
@@ -174,7 +200,7 @@ class ResourceManager:
 
     def save_friend_code(self, qq_number: str, friend_code: str):
         """保存好友码到数据库"""
-        qq_number = str(qq_number)
+        qq_number = self._normalize_qq(qq_number)
         try:
             with self.db_lock:
                 with sqlite3.connect(self.db_file) as conn:
@@ -195,7 +221,7 @@ class ResourceManager:
             qq_number: 用户的QQ号
             code: 授权码      
         """
-        qq_number = str(qq_number)
+        qq_number = self._normalize_qq(qq_number)
 
         try:
             # 1. 用 code 换取 token（异步HTTP请求）
@@ -282,7 +308,7 @@ class ResourceManager:
                 return result
 
     async def get_access_token(self, qq_number: str):
-        qq_number = str(qq_number)
+        qq_number = self._normalize_qq(qq_number)
         logger.info(f"获取用户 {qq_number} 的access token")
         
         # 从数据库读取token
