@@ -31,9 +31,6 @@ class ChunithmBot(Star):
         await self.res_mgr.load_data()
         logger.info(f"导入曲目列表成功，共 {len(self.res_mgr.songs)} 首歌曲")
 
-        self.res_mgr.load_user_data()
-        logger.info(f"导入用户数据成功，共 {len(self.res_mgr.user_data)} 个用户账号记录")
-
         self.res_mgr.load_config()
         logger.info(f"导入config成功！")
 
@@ -377,9 +374,6 @@ class ChunithmBot(Star):
         else:
             await self.res_mgr.load_data(force_refresh=True)
             yield event.plain_result(f"数据刷新完成！当前共 {len(self.res_mgr.songs)} 首歌曲")
-
-            self.res_mgr.load_user_data()
-            logger.info(f"导入用户数据成功，共 {len(self.res_mgr.user_data)} 个用户账号记录")
 
             self.res_mgr.load_config()
             logger.info(f"导入config成功！")

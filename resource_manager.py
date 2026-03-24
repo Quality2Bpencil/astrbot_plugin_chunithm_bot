@@ -34,9 +34,7 @@ class ResourceManager:
         self.db_file = self.plugin_dir / "user_data.db"
         self.db_lock = Lock()  # 线程锁，防止并发冲突
         self.init_db()
-        
-        # 保留user_data用于临时缓存，不再持久化
-        self.user_data = {'qq_number': {}, 'token': {}}
+
         self.developer_api_key = ""
         self.oauth_app = {}
         self.config_file = self.plugin_dir / "config.json"
@@ -186,32 +184,6 @@ class ResourceManager:
             logger.info(f"好友码已保存 ({qq_number}): {friend_code}")
         except Exception as e:
             logger.error(f"保存好友码失败 ({qq_number}): {e}")
-
-    def load_user_data(self):
-        """加载用户列表（已弃用，保留接口兼容性）"""
-        # 从数据库重新加载所有token和friend_code到内存
-        try:
-            with sqlite3.connect(self.db_file) as conn:
-                # 加载所有token
-                cursor = conn.execute('SELECT qq_number, token_data FROM tokens')
-                self.user_data['token'] = {}
-                for qq_number, token_data in cursor.fetchall():
-                    self.user_data['token'][qq_number] = json.loads(token_data)
-                
-                # 加载所有好友码
-                cursor = conn.execute('SELECT qq_number, friend_code FROM friend_codes')
-                self.user_data['qq_number'] = {}
-                for qq_number, friend_code in cursor.fetchall():
-                    self.user_data['qq_number'][qq_number] = friend_code
-        except Exception as e:
-            logger.error(f"同步数据库到内存失败: {e}")
-        
-        return self.user_data
-    
-    def save_user_data(self):
-        """保存用户列表（已弃用，不使用内存dict持久化）"""
-        # 已改为使用save_token和save_friend_code
-        pass
 
     async def handle_oauth(self, qq_number, code):
         """
