@@ -204,7 +204,7 @@ class ChunithmBot(Star):
                 reply = "好友码绑定成功！\n"
 
             if event.is_private_chat():
-                oauth_link = self.res_mgr.oauth_app.get('oauth_link') + qq_number
+                oauth_link = self.res_mgr.oauth_app.get('oauth_link') + self.res_mgr.encode(qq_number)
                 reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
             else:
                 reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"

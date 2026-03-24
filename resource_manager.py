@@ -90,6 +90,31 @@ class ResourceManager:
     def _normalize_qq(self, qq_number) -> str:
         """统一QQ号格式，避免空白字符导致查不到同一用户。"""
         return str(qq_number).strip()
+    
+    def encode(self, qq: str) -> str:
+        """QQ号转短码，如 1209118572 -> 某个字母数字串"""
+        qq = int(qq)
+
+        if qq == 0:
+            return "0"
+        
+        chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+        result = []
+        num = qq
+        
+        while num > 0:
+            result.append(chars[num % 36])
+            num //= 36
+        
+        return ''.join(reversed(result))
+    
+    def decode(self, code: str) -> str:
+        """短码转QQ号"""
+        chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+        result = 0
+        for char in code:
+            result = result * 36 + chars.index(char)
+        return str(result)
 
     def load_config(self):
         """获取开发者API密钥与OAuth应用信息"""
@@ -221,7 +246,7 @@ class ResourceManager:
             qq_number: 用户的QQ号
             code: 授权码      
         """
-        qq_number = self._normalize_qq(qq_number)
+        qq_number = self.decode(qq_number)  # 将短码解回QQ号
 
         try:
             # 1. 用 code 换取 token（异步HTTP请求）
