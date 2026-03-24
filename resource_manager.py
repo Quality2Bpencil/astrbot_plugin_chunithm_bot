@@ -198,11 +198,13 @@ class ResourceManager:
                 return result
 
     async def get_access_token(self, qq_number: str):
-        logger.info("进行1：get access token")
+        self.load_user_data()  # 强制从文件重新加载
+    
+        logger.info(f"获取用户 {qq_number} 的access token")
+        
         if qq_number not in self.user_data['token']:
+            logger.warning(f"用户 {qq_number} 未授权")
             return None
-
-        logger.info("进行2：get access token")
 
         try:
             # 1. 刷新token
