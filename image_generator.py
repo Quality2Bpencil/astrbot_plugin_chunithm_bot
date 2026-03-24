@@ -220,6 +220,7 @@ class ImageGenerator:
         return out
 
     def draw_shadow_gradient_rounded_rect(
+        self,
         base_img,
         xy,                          # (x1, y1, x2, y2)
         radius=30,
@@ -436,10 +437,13 @@ class ImageGenerator:
                     {
                         'xy': (x1, y1, x2, y2),
                         'radius': 31,
-                        'fill': color,
+                        'top_color': color,
+                        'bottom_color': (255, 255, 255, 255),
+                        'transition_center': 0.65,
+                        'transition_width': 0.28,
                         'shadow_offset': (3, 3),
                         'shadow_color': (15, 25, 70, 130),
-                        'blur_radius': 10,
+                        'shadow_blur': 10,
                     }
                 )
                 index += 1
@@ -448,7 +452,7 @@ class ImageGenerator:
             top_y += bg_y0 + row_num * bg_spacing_y + 40
 
         for spec in rect_specs:
-            canvas = self.draw_shadow_rounded_rect(canvas, **spec)    
+            canvas = self.draw_shadow_gradient_rounded_rect(canvas, **spec)    
 
         const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
         const_font.set_variation_by_name('Bold')
@@ -571,7 +575,7 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"overpower_{random_name}.png"
+            output_path = self.temp_dir / f"dsb_{random_name}.png"
         
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)
@@ -1733,8 +1737,13 @@ class ImageGenerator:
         background_path = self.bgs_dir / 'general_bg.png'
 
         # 画布尺寸
-        canvas_width = 1200
-        canvas_height = 1600
+        canvas_width = 1600
+        canvas_height = 245
+
+        for const, value in data.items():
+            songs = value['songs']
+            row_num = (len(songs) + 7) // 8
+            canvas_height += 120 + row_num * 221 + 25
 
         # 加载背景图片
         if background_path and os.path.exists(background_path):
@@ -1750,19 +1759,19 @@ class ImageGenerator:
         canvas = canvas.convert('RGBA')
 
         # 在顶部画一个平行四边形（ID框）
-        frame_base = 400
-        frame_height = 89
-        frame_tan_a = 3
-        p1_x, p1_y = 110, 60
-        p2_x, p2_y = p1_x + frame_base, p1_y
-        p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
-        p4_x, p4_y = p3_x - frame_base, p3_y
+        name_frame_base = 430
+        name_frame_height = 100
+        name_frame_tan_a = 3
+        p5_x, p5_y = 110, 70
+        p6_x, p6_y = p5_x + name_frame_base, p5_y
+        p7_x, p7_y = round(p6_x - name_frame_height / name_frame_tan_a), p6_y + name_frame_height
+        p8_x, p8_y = p7_x - name_frame_base, p7_y
 
         parallelogram_points = [
-            (p1_x, p1_y),
-            (p2_x, p2_y),
-            (p3_x, p3_y),
-            (p4_x, p4_y),
+            (p5_x, p5_y),
+            (p6_x, p6_y),
+            (p7_x, p7_y),
+            (p8_x, p8_y),
         ]
         canvas = self.draw_shadow_parallelogram(
             canvas,
@@ -1774,9 +1783,9 @@ class ImageGenerator:
         )
 
         # 玩家昵称
-        name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 48)
-        name_x = 295
-        name_y = 107
+        name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 64)
+        name_x = 320
+        name_y = 120
 
         text_data = [
             {
@@ -1798,17 +1807,52 @@ class ImageGenerator:
         col_num = 8
         bg_x0, bg_y0 = 81, 120
         bg_width = 157
-        bg_height = 157
+        bg_height = 195
         bg_spacing_x = 183
-        bg_spacing_y = 183
+        bg_spacing_y = 221
         rect_specs = []
+        long_rect_specs = []
 
-        top_y = 70
+        top_y = 220
         
-        for const, songs in data.items():
-            # 圆角矩形底
+        for const, value in data.items():
+            songs = value['songs']
+            # 在左边画一个平行四边形（定数框）
+            p1_x, p1_y = 110, top_y
+            p2_x, p2_y = p1_x + frame_base, p1_y
+            p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
+            p4_x, p4_y = p3_x - frame_base, p3_y
+
+            parallelogram_points = [
+                (p1_x, p1_y),
+                (p2_x, p2_y),
+                (p3_x, p3_y),
+                (p4_x, p4_y),
+            ]
+            canvas = self.draw_shadow_parallelogram(
+                canvas,
+                points=parallelogram_points,
+                fill=(255, 255, 255, 235),
+                shadow_offset=(3, 3),
+                shadow_color=(15, 25, 70, 130),
+                blur_radius=10,
+            )
+
+            # 统计信息的圆角矩形底
+            long_rect_specs.append(
+                {
+                    'xy': (400, top_y - 5, 1515, top_y + 80),
+                    'radius': 20,
+                    'fill': (255, 255, 255, 255),
+                    'shadow_offset': (3, 3),
+                    'shadow_color': (15, 25, 70, 130),
+                    'blur_radius': 10,
+                }
+            )
+
+            # 单曲圆角矩形底
             index = 0
-            for song in songs:
+            for key, song in songs.items():
                 level_index = song.get('level_index', -1)
                 x1 = bg_x0 + (index % col_num) * bg_spacing_x
                 y1 = top_y + bg_y0 + (index // col_num) * bg_spacing_y
@@ -1832,37 +1876,201 @@ class ImageGenerator:
                     {
                         'xy': (x1, y1, x2, y2),
                         'radius': 31,
-                        'fill': color,
+                        'top_color': color,
+                        'bottom_color': (255, 255, 255, 255),
+                        'transition_center': 0.7,
+                        'transition_width': 0.28,
                         'shadow_offset': (3, 3),
                         'shadow_color': (15, 25, 70, 130),
-                        'blur_radius': 10,
+                        'shadow_blur': 10,
                     }
                 )
                 index += 1
 
             row_num = (len(songs) + col_num - 1) // col_num
-            top_y += bg_y0 + row_num * bg_spacing_y + 40
+            top_y += bg_y0 + row_num * bg_spacing_y + 25
 
         for spec in rect_specs:
-            canvas = self.draw_shadow_rounded_rect(canvas, **spec)    
+            canvas = self.draw_shadow_gradient_rounded_rect(canvas, **spec)
+
+        for spec in long_rect_specs:
+            canvas = self.draw_shadow_rounded_rect(canvas, **spec)
 
         const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
         const_font.set_variation_by_name('Bold')
 
-        text_data = []
+        # 玩家昵称
+        name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 52)
+        name_x = 311
+        name_y = 122
+
+        text_data = [
+            {
+                # 昵称
+                'text': unicodedata.normalize("NFKC", player_name), # 全角转半角
+                'position': (name_x, name_y),
+                'font': name_font,
+                'color': 'black',
+                'anchor': 'mm'
+            },
+        ]
+
         draw = ImageDraw.Draw(canvas, 'RGBA')
         
         small_base = 16
         jacket_size = 170
         jacket_radius = 26
-        
-        top_y = 70
 
-        for const, songs in data.items():
+        small_para_x0 = 440
+        small_para_y0 = 13
+        small_para_base = 7
+        small_para_height = 21
+        small_para_tan_a = 3
+        small_para_spacing = 97
+        small_para_color = [
+            (0, 0, 0, 255), # 黑色
+            (236, 48, 138, 255), # 玫红色
+            (235, 155, 15, 255), # 橙色
+            (70, 210, 20, 255), # 绿色
+            (236, 48, 138, 255), # 玫红色
+            (235, 155, 15, 255), # 橙色
+            (48, 139, 236, 255), # 蓝色
+            (0, 0, 0, 255), # 黑色
+        ]
+
+        small_texts = ["ALL", "AJC", "AJ", "FC", "SSS+", "SSS", "SS+", "OVERPOWER (只计算最高难度谱)"]
+        small_text_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 22)
+        small_texts_list = ["all", "ajc", "aj", "fc", "sssp", "sss", "ssp"]
+
+        num_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 30)
+        num_font.set_variation_by_name('SemiBold')
+
+        op_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 26)
+        op_font.set_variation_by_name('SemiBold')
+
+        score_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 28)
+        score_font.set_variation_by_name('SemiBold')
+
+        # 角标
+        right_x0 = 144
+        bottom_y0 = 183
+        leg_len1 = 27
+        leg_len2 = 54
+        p9_x0, p9_y0 = right_x0, bottom_y0 - leg_len2
+        p10_x0, p10_y0 = right_x0, bottom_y0 - leg_len1
+        p11_x0, p11_y0 = right_x0 - leg_len1, bottom_y0
+        p12_x0, p12_y0 = right_x0 - leg_len2, bottom_y0
+
+        top_y = 220
+
+        for const, value in data.items():
+            songs = value['songs']
+            count = value['count']
+
+            p1_x, p1_y = 110, top_y
+            p2_x, p2_y = p1_x + frame_base, p1_y
+            p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
+            p4_x, p4_y = p3_x - frame_base, p3_y
+
+            # 左侧的绿色平行四边形
+            parallelogram_points = [
+                (p1_x, p1_y),
+                (p1_x + small_base, p2_y),
+                (p4_x + small_base, p3_y),
+                (p4_x, p4_y),
+            ]
+            draw.polygon(
+                parallelogram_points,
+                fill=(0, 204, 107, 255) # 绿色
+            )
+            
+            # 右侧的紫色平行四边形
+            parallelogram_points = [
+                (p2_x - small_base, p1_y),
+                (p2_x, p2_y),
+                (p3_x, p3_y),
+                (p3_x - small_base, p4_y),
+            ]
+            draw.polygon(
+                parallelogram_points,
+                fill=(165, 89, 255, 255) # 紫色
+            )
+
+            const_x = 220
+            const_y = top_y + 38
+
+            text_data.append(
+                {
+                    'position': (const_x, const_y),
+                    'text': f'{const:.1f}',
+                    'color': (0, 0, 0, 255),
+                    'font': const_font,
+                    'anchor': 'mm'
+                }
+            )
+
+            # 统计信息
+            for index in range(8):
+                p13_x, p13_y = small_para_x0 + index * small_para_spacing, top_y + small_para_y0
+                p14_x, p14_y = p13_x + small_para_base, p13_y
+                p15_x, p15_y = round(p14_x - small_para_height / small_para_tan_a), p14_y + small_para_height
+                p16_x, p16_y = p15_x - small_para_base, p15_y
+                parallelogram_points = [
+                    (p13_x, p13_y),
+                    (p14_x, p14_y),
+                    (p15_x, p15_y),
+                    (p16_x, p16_y),
+                ]
+                draw.polygon(
+                    parallelogram_points,
+                    fill=small_para_color[index]
+                )
+
+                text_data.append(
+                    {
+                        # 小标题
+                        'text': small_texts[index],
+                        'position': (p13_x + 12, p13_y - 2),
+                        'font': small_text_font,
+                        'color': 'black',
+                    }
+                )
+
+                if index < 7:
+                    text_data.append(
+                        {
+                            # 数字
+                            'text': str(count.get(small_texts_list[index], 0)),
+                            'position': (p13_x + 10, p13_y + 23),
+                            'font': num_font,
+                            'color': 'black',
+                        }
+                    )
+                else:
+                    if count['total_op'] < 1e-10:
+                        text_data.append(
+                            {
+                                # OVERPOWER数字
+                                'text': "0.00 / 0.0 ( - %)",
+                                'position': (p13_x + 10, p13_y + 25),
+                                'font': op_font,
+                                'color': 'black',
+                            }
+                        )
+                    else:
+                        text_data.append(
+                            {
+                                # OVERPOWER数字
+                                'text': f"{count['user_op']:.2f} / {count['total_op']:.1f} ({math.floor(count['user_op'] / count['total_op'] * 10000 + 1e-10) / 10000:.2%})",
+                                'position': (p13_x + 10, p13_y + 25),
+                                'font': op_font,
+                                'color': 'black',
+                            }
+                        )
 
             # 每首歌
             index = 0
-            for song in songs:
+            for key, song in songs.items():
                 # ========== 曲绘部分 ==========
                 song_id = song.get('id', 2353) # 其实2353是幻想即兴曲（
                 jacket_path = await self.res_mgr.get_jacket(song_id)
@@ -1913,20 +2121,68 @@ class ImageGenerator:
                     text_draw.text((jacket_size//2 - 40, jacket_size//2 - 10), 
                                 "No Image", fill=(100, 100, 100))
                     canvas.paste(text_img, (jacket_x, jacket_y), text_img)
-                
+
+                # 成绩
+                text_data.append(
+                    {
+                        # 分数
+                        'text': f"{song.get('score', 0):,}",
+                        'position': (jacket_x + 68, jacket_y + 160),
+                        'font': score_font,
+                        'color': 'black',
+                        'anchor': 'mm',
+                    }
+                )
+
+                # FC / AJ / AJC标识
+                p9 = (jacket_x + p9_x0, jacket_y + p9_y0)
+                p10 = (jacket_x + p10_x0, jacket_y + p10_y0)
+                p11 = (jacket_x + p11_x0, jacket_y + p11_y0)
+                p12 = (jacket_x + p12_x0, jacket_y + p12_y0)
+
+                color = (255, 255, 255, 255) # 默认为白色
+                if song['full_combo'] == 'fullcombo':
+                    color = (86, 236, 24, 255) # 绿色
+                elif song['full_combo'] == 'alljustice':
+                    color = (251, 173, 29, 255) # 橙色
+                elif song['full_combo'] == 'alljusticecritical':
+                    self.paste_gradient_polygon(
+                        canvas,
+                        [p9, p10, p11, p12],
+                        [
+                            (255, 140, 140, 255),  # 柔和红
+                            (255, 170, 150, 255),  # 橙红
+                            (245, 180, 120, 255),  # 橙金
+                            (230, 190, 110, 255),  # 暗橙黄
+                            (200, 200, 130, 255),  # 黄绿
+                            (160, 210, 180, 255),  # 蓝绿
+                            (130, 200, 220, 255),  # 浅蓝
+                            (100, 160, 210, 255),  # 中蓝
+                            (80, 130, 200, 255),   # 深蓝
+                        ],
+                        angle_deg=135
+                    )
+
+                if color != (255, 255, 255, 255):
+                    # 绘制梯形
+                    draw.polygon(
+                        [p9, p10, p11, p12],
+                        fill=color # 填充颜色
+                    )
+
                 index += 1
             
             row_num = (len(songs) + col_num - 1) // col_num
-            top_y += bg_y0 + row_num * bg_spacing_y + 40
+            top_y += bg_y0 + row_num * bg_spacing_y + 25
 
-        small_base = 20
+        small_name_base = 20
 
         # 左侧的绿色平行四边形
         parallelogram_points = [
-            (p1_x, p1_y),
-            (p1_x + small_base, p2_y),
-            (p4_x + small_base, p3_y),
-            (p4_x, p4_y),
+            (p5_x, p5_y),
+            (p5_x + small_name_base, p6_y),
+            (p8_x + small_name_base, p7_y),
+            (p8_x, p8_y),
         ]
         draw.polygon(
             parallelogram_points,
@@ -1935,10 +2191,10 @@ class ImageGenerator:
         
         # 右侧的紫色平行四边形
         parallelogram_points = [
-            (p2_x - small_base, p1_y),
-            (p2_x, p2_y),
-            (p3_x, p3_y),
-            (p3_x - small_base, p4_y),
+            (p6_x - small_name_base, p5_y),
+            (p6_x, p6_y),
+            (p7_x, p7_y),
+            (p7_x - small_name_base, p8_y),
         ]
         draw.polygon(
             parallelogram_points,
@@ -1954,7 +2210,7 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"overpower_{random_name}.png"
+            output_path = self.temp_dir / f"list_{random_name}.png"
         
         canvas.save(output_path, 'PNG', quality=95)
         return str(output_path)

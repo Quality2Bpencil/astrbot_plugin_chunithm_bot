@@ -18,6 +18,7 @@ class ResourceManager:
         """
         self.plugin_dir = data_root / "plugin_data" / plugin_name
         self.plugin_dir.mkdir(parents=True, exist_ok=True)
+        self.help_image = self.plugin_dir / "help_image.png"
         self.songs_file = self.plugin_dir / "songs.json"
         self.songs = []
         self.song_map = {}
@@ -60,17 +61,23 @@ class ResourceManager:
             "音击舞萌": "击舞",
             "原创": "原创"
         }
+        self.fullcombo_rank = {
+            "alljusticecritical": 3,
+            "alljustice": 2,
+            "fullcombo": 1,
+            None: 0
+        }
         self.level_map = {}
         self.generate_level_map()
 
     def generate_level_map(self):
         const = 1.0
         while const <= 15.9:
-            self.level_map[f"{const:.1f}"] = (const, const)
+            self.level_map[f"{const:.1f}"] = (const - 1e-6, const + 1e-6)
             const += 0.1
         for level in range(1, 16):
-            self.level_map[str(level)] = (level, level + 0.4)
-            self.level_map[str(level) + '+'] = (level + 0.5, level + 0.9)
+            self.level_map[str(level)] = (level - 1e-6, level + 0.4 + 1e-6)
+            self.level_map[str(level) + '+'] = (level + 0.5 - 1e-6, level + 0.9 + 1e-6)
 
     def load_config(self):
         """获取开发者API密钥与OAuth应用信息"""
@@ -1036,11 +1043,12 @@ class ResourceManager:
     async def get_list(self):
         return
     
-    async def get_dsb(self, param):
+    def get_dsb(self, param):
         min_const, max_const = self.level_map.get(param, (0, 0))
         song_list = {}
         const = min_const
         while const <= max_const:
+            const = round(const, 1) # 避免浮点数精度问题
             song_list[const] = []
             const += 0.1
 
@@ -1051,6 +1059,7 @@ class ResourceManager:
                 continue
             for difficulty in song['difficulties']:
                 const = difficulty['level_value']
+                const = round(const, 1) # 避免浮点数精度问题
                 if const < min_const or const > max_const:
                     continue
                 song_info = {
@@ -1061,5 +1070,117 @@ class ResourceManager:
                 song_list[const].append(song_info)
 
         song_list = {k: v for k, v in song_list.items() if v} # 过滤掉没有歌曲的定数
+
+        return song_list
+    
+    async def get_list(self, param, qq_number, total_time=10):
+        token_data = await self.get_access_token(qq_number)
+        url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
+        headers = {
+            "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
+        }
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+
+        if data == None:
+            logger.error("查询list失败！")
+            return None
+
+        min_const, max_const = self.level_map.get(param, (0, 0))
+        song_list = {}
+        const = min_const
+        while const <= max_const:
+            const = round(const, 1) # 避免浮点数精度问题
+            song_list[const] = {
+                'songs': {},
+                'count': {
+                    'all': 0,
+                    'ajc': 0,
+                    'aj': 0,
+                    'fc': 0,
+                    'sssp': 0,
+                    'sss': 0,
+                    'ssp': 0,
+                    'total_op': 0,
+                    'user_op': 0
+                }
+            }
+            const += 0.1
+
+        for song in self.songs:
+            song_id = song.get('id', 9999)
+            title = song.get('title', 'UNKNOWN')
+            if song_id >= 8000: # WE谱
+                continue
+            for difficulty in song['difficulties']:
+                const = difficulty['level_value']
+                const = round(const, 1) # 避免浮点数精度问题
+                if const < min_const or const > max_const:
+                    continue
+                level_index = difficulty['difficulty']
+
+                song_list[const]['songs'][(song_id, level_index)] = {
+                    'id': song_id,
+                    'level_index': level_index,
+                    'score': 0,
+                    'full_combo': None,
+                    'user_op': 0
+                }
+
+                if level_index == len(song.get('difficulties', [])) - 1: # 最高难度
+                    song_list[const]['count']['total_op'] += (const + 3) * 5
+
+        song_list = {k: v for k, v in song_list.items() if v['songs'] != {}} # 过滤掉没有歌曲的定数
+
+        for score in data:
+            song_id = score.get('id', 9999)
+            level_index = score.get('level_index', 0)
+            const = self.song_map[song_id]['difficulties'][level_index].get('level_value', 0)
+            const = round(const, 1) # 避免浮点数精度问题
+            score_point = score.get('score', 0)
+            full_combo = score.get('full_combo', '')
+            if const < min_const or const > max_const:
+                continue
+            if (song_id, level_index) not in song_list[const]['songs']:
+                continue
+            if score_point > song_list[const]['songs'][(song_id, level_index)]['score']:
+                song_list[const]['songs'][(song_id, level_index)]['score'] = score_point
+            if self.fullcombo_rank[full_combo] > self.fullcombo_rank[song_list[const]['songs'][(song_id, level_index)]['full_combo']]:
+                song_list[const]['songs'][(song_id, level_index)]['full_combo'] = full_combo
+            song_list[const]['songs'][(song_id, level_index)]['user_op'] = max(song_list[const]['songs'][(song_id, level_index)]['user_op'], self.calc_overpower(score))
+
+        for const, data in song_list.items():
+            songs = data['songs']
+            for song_id, level_index in songs:
+                score_point = songs[(song_id, level_index)]['score']
+                full_combo = songs[(song_id, level_index)]['full_combo']
+                song_list[const]['count']['all'] += 1
+
+                if full_combo == "alljusticecritical":
+                    song_list[const]['count']['ajc'] += 1
+                    song_list[const]['count']['aj'] += 1
+                    song_list[const]['count']['fc'] += 1
+                elif full_combo == "alljustice":
+                    song_list[const]['count']['aj'] += 1
+                    song_list[const]['count']['fc'] += 1
+                elif full_combo == "fullcombo":
+                    song_list[const]['count']['fc'] += 1
+
+                if score_point >= 1009000:
+                    song_list[const]['count']['sssp'] += 1
+                if score_point >= 1007500:
+                    song_list[const]['count']['sss'] += 1
+                if score_point >= 1005000:
+                    song_list[const]['count']['ssp'] += 1
+
+                if level_index == len(self.song_map[song_id].get('difficulties', [])) - 1: # 最高难度
+                    song_list[const]['count']['user_op'] += songs[(song_id, level_index)]['user_op']
+
+            # 按分数排序
+            sorted_songs = sorted(
+                songs.items(),
+                key=lambda item: item[1].get('score', 0),
+                reverse=True
+            )
+            data['songs'] = dict(sorted_songs)
 
         return song_list

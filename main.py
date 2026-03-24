@@ -172,7 +172,7 @@ class ChunithmBot(Star):
         if len(parts) >= 2:
             param = parts[1]  # 获取难度或定数参数
 
-            song_list = await self.res_mgr.get_dsb(param)
+            song_list = self.res_mgr.get_dsb(param)
 
             if song_list is None or song_list == {}:
                 yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度或定数是否正确。")
@@ -206,8 +206,11 @@ class ChunithmBot(Star):
             else:
                 reply = "好友码绑定成功！\n"
 
-            oauth_link = self.res_mgr.oauth_app.get('oauth_link') + qq_number
-            reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
+            if event.is_private_chat():
+                oauth_link = self.res_mgr.oauth_app.get('oauth_link') + qq_number
+                reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
+            else:
+                reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"
 
             yield event.plain_result(reply)
 
@@ -223,6 +226,12 @@ class ChunithmBot(Star):
             return "你的账号数据异常！", None
         image_path = await self.img_gen.create_b30_image(data, player_name=player.get("name", "CHUNITHM"))
         return None, image_path
+
+    @filter.command("help")
+    async def cmd_help(self, event: AstrMessageEvent):
+        """显示帮助信息。用法：/help"""
+        image_path = str(self.res_mgr.help_image)
+        yield event.image_result(image_path)
 
     @filter.command("b30")
     async def cmd_b30(self, event: AstrMessageEvent):
@@ -307,19 +316,31 @@ class ChunithmBot(Star):
     @filter.command("list")
     async def cmd_list(self, event: AstrMessageEvent):
         """查询list。用法：/list"""
+        qq_number = event.get_sender_id()
+        friend_code = await self.res_mgr.get_friend_code(qq_number)
+        if friend_code is None:
+            yield event.plain_result("你还未绑定你的账号！")
+            return
+        
         full_message = event.message_str
         parts = full_message.split()
+
         if len(parts) >= 2:
             param = parts[1]  # 获取难度或定数参数
 
-            song_list = await self.res_mgr.get_dsb(param)
+            song_list = await self.res_mgr.get_list(param, qq_number)
 
             if song_list is None or song_list == {}:
                 yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度或定数是否正确。")
                 return
+            
+            player = await self.res_mgr.get_player(friend_code)
+            if player is None:
+                yield event.plain_result("你的账号数据异常！")
+                return
 
             # 调用create_dsb生成图片
-            image_path = await self.img_gen.create_list_image(data=song_list)
+            image_path = await self.img_gen.create_list_image(data=song_list, player_name=player.get("name", "CHUNITHM"))
             return
             
             # 检查图片是否生成成功
