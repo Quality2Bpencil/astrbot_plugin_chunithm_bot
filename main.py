@@ -186,8 +186,8 @@ class ChunithmBot(Star):
                 # 返回图片
                 yield event.image_result(image_path)
                 
-                # 可选：清理临时文件
-                # self.image_gen.cleanup_old_files()
+                # 清理临时文件
+                self.res_mgr.cleanup_old_files()
             else:
                 yield event.plain_result("图片生成失败")
         else:
@@ -241,6 +241,8 @@ class ChunithmBot(Star):
             yield event.plain_result(error)
         else:
             yield event.image_result(image_path)
+            # 清理临时文件
+            self.res_mgr.cleanup_old_files()
 
     @filter.command("b50")
     async def cmd_b50(self, event: AstrMessageEvent):
@@ -250,6 +252,8 @@ class ChunithmBot(Star):
             yield event.plain_result(error)
         else:
             yield event.image_result(image_path)
+            # 清理临时文件
+            self.res_mgr.cleanup_old_files()
 
     async def _get_max_best(self, event: AstrMessageEvent):
         """查询理论b30"""
@@ -268,6 +272,8 @@ class ChunithmBot(Star):
             yield event.plain_result(error)
         else:
             yield event.image_result(image_path)
+            # 清理临时文件
+            self.res_mgr.cleanup_old_files()
 
     @filter.command("max50")
     async def cmd_max50(self, event: AstrMessageEvent):
@@ -277,6 +283,8 @@ class ChunithmBot(Star):
             yield event.plain_result(error)
         else:
             yield event.image_result(image_path)
+            # 清理临时文件
+            self.res_mgr.cleanup_old_files()
 
     @filter.command("overpower")
     async def cmd_overpower(self, event: AstrMessageEvent):
@@ -296,6 +304,7 @@ class ChunithmBot(Star):
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="level")
             yield event.image_result(image_path)
+            self.res_mgr.cleanup_old_files()
         elif parts[1] == 'version' or parts[1] == 'ver':
             data = await self.res_mgr.get_overpower_version(qq_number)
             player = await self.res_mgr.get_player(friend_code)
@@ -304,6 +313,7 @@ class ChunithmBot(Star):
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="version")
             yield event.image_result(image_path)
+            self.res_mgr.cleanup_old_files()
         elif parts[1] == 'genre' or parts[1] == 'type':
             data = await self.res_mgr.get_overpower_genre(qq_number)
             player = await self.res_mgr.get_player(friend_code)
@@ -312,6 +322,9 @@ class ChunithmBot(Star):
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="genre")
             yield event.image_result(image_path)
+            self.res_mgr.cleanup_old_files()
+        else:
+            yield event.plain_result("指令格式错误，正确格式：/overpower level/version/genre")
 
     @filter.command("list")
     async def cmd_list(self, event: AstrMessageEvent):
@@ -341,15 +354,14 @@ class ChunithmBot(Star):
 
             # 调用create_dsb生成图片
             image_path = await self.img_gen.create_list_image(data=song_list, player_name=player.get("name", "CHUNITHM"))
-            return
             
             # 检查图片是否生成成功
             if image_path and os.path.exists(image_path):
                 # 返回图片
                 yield event.image_result(image_path)
                 
-                # 可选：清理临时文件
-                # self.image_gen.cleanup_old_files()
+                # 清理临时文件
+                self.image_gen.cleanup_old_files()
             else:
                 yield event.plain_result("图片生成失败")
         else:

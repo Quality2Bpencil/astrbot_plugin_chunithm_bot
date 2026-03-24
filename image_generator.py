@@ -331,20 +331,6 @@ class ImageGenerator:
         
         # 极端情况：连一个字符都放不下
         return ellipsis
-    
-    def cleanup_old_files(self, max_age_hours=24):
-        """
-        清理过期的临时文件
-        
-        Args:
-            max_age_hours: 文件最大保留时间（小时）
-        """
-        current_time = time.time()
-        for file_path in self.temp_dir.glob("*"):
-            if file_path.is_file():
-                file_age = current_time - file_path.stat().st_mtime
-                if file_age > max_age_hours * 3600:
-                    file_path.unlink()
 
     async def create_dsb_image(self, data, output_path=None):
         """

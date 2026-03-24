@@ -23,6 +23,8 @@ class ResourceManager:
         self.songs = []
         self.song_map = {}
         self.version_map = {0: "UNKNOWN"}
+        self.temp_dir = self.plugin_dir / "temp_images"
+        self.temp_dir.mkdir(exist_ok=True)
         self.jackets_dir = self.plugin_dir / "jackets"
         self.jackets_dir.mkdir(exist_ok=True)  # 确保目录存在
         self.user_data = {'qq_number': {}, 'token': {}}
@@ -355,6 +357,20 @@ class ResourceManager:
         except Exception as e:
             logger.error(f"加载数据失败: {e}")
             self.songs = []
+
+    def cleanup_old_files(self, max_age_hours=0):
+        """
+        清理过期的临时文件
+        
+        Args:
+            max_age_hours: 文件最大保留时间（小时）
+        """
+        current_time = time.time()
+        for file_path in self.temp_dir.glob("*"):
+            if file_path.is_file():
+                file_age = current_time - file_path.stat().st_mtime
+                if file_age > max_age_hours * 3600:
+                    file_path.unlink()
 
     async def get_jacket(self, song_id: int) -> Path:
         """
