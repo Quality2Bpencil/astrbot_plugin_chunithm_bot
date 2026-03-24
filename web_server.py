@@ -40,6 +40,7 @@ class OAuthWebServer:
             if code and state:
                 # 如果有 code 和 state，说明是授权回调
                 logger.info(f"收到授权回调 - state: {state}, code: {code}")
+                state = self.res_mgr.decode(state)  # 解码回QQ号
                 try:
                     # 在同步函数中调用异步方法
                     success = asyncio.run(self.res_mgr.handle_oauth(qq_number=state, code=code))
