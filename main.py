@@ -332,6 +332,7 @@ class ChunithmBot(Star):
     async def cmd_list(self, event: AstrMessageEvent):
         """查询list。用法：/list"""
         qq_number = str(event.get_sender_id())
+        logger.info(f"用户 {qq_number} 请求查询list")
         friend_code = await self.res_mgr.get_friend_code(qq_number)
         if friend_code is None:
             yield event.plain_result("你还未绑定你的账号！")
