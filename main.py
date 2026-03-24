@@ -195,11 +195,13 @@ class ChunithmBot(Star):
 
     @filter.command("bind")
     async def cmd_bind(self, event: AstrMessageEvent):
-        """绑定落雪账号。用法：/bind 或 /bind [好友码]"""
-        qq_number = event.get_sender_id()
+        """绑定落雪账号。用法：/bind [QQ号]"""
         full_message = event.message_str
         parts = full_message.split()
         if len(parts) <= 1:
+            yield event.plain_result("指令格式错误，正确格式：/bind [QQ号]")
+        elif len(parts) == 2:
+            qq_number = parts[1]
             status = await self.res_mgr.bind_by_qq(qq_number)
             if status == None:
                 reply = "你的落雪账号没有绑定你的QQ账号！请前往 落雪官网 -> 账号详情 -> 第三方应用 -> 第三方账号绑定 以绑定你的QQ账号！\n"
@@ -210,7 +212,7 @@ class ChunithmBot(Star):
                 oauth_link = self.res_mgr.oauth_app.get('oauth_link') + qq_number
                 reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
             else:
-                reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"
+                reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind [QQ号] 来获取授权链接！"
 
             yield event.plain_result(reply)
 
@@ -300,7 +302,7 @@ class ChunithmBot(Star):
             data = await self.res_mgr.get_overpower_level(qq_number)
             player = await self.res_mgr.get_player(friend_code)
             if data is None or player is None:
-                yield event.plain_result("你的账号数据异常！")
+                yield event.plain_result("你还未绑定你的账号！")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="level")
             yield event.image_result(image_path)
@@ -309,7 +311,7 @@ class ChunithmBot(Star):
             data = await self.res_mgr.get_overpower_version(qq_number)
             player = await self.res_mgr.get_player(friend_code)
             if data is None or player is None:
-                yield event.plain_result("你的账号数据异常！")
+                yield event.plain_result("你还未绑定你的账号！")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="version")
             yield event.image_result(image_path)
@@ -318,7 +320,7 @@ class ChunithmBot(Star):
             data = await self.res_mgr.get_overpower_genre(qq_number)
             player = await self.res_mgr.get_player(friend_code)
             if data is None or player is None:
-                yield event.plain_result("你的账号数据异常！")
+                yield event.plain_result("你还未绑定你的账号！")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="genre")
             yield event.image_result(image_path)
@@ -349,7 +351,7 @@ class ChunithmBot(Star):
             
             player = await self.res_mgr.get_player(friend_code)
             if player is None:
-                yield event.plain_result("你的账号数据异常！")
+                yield event.plain_result("你还未绑定你的账号！")
                 return
 
             # 调用create_dsb生成图片
@@ -361,7 +363,7 @@ class ChunithmBot(Star):
                 yield event.image_result(image_path)
                 
                 # 清理临时文件
-                self.image_gen.cleanup_old_files()
+                self.res_mgr.cleanup_old_files()
             else:
                 yield event.plain_result("图片生成失败")
         else:

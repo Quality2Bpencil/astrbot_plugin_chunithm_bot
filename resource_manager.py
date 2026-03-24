@@ -198,11 +198,11 @@ class ResourceManager:
                 return result
 
     async def get_access_token(self, qq_number: str):
-        logger.info("进行111：get access token")
+        logger.info("进行1：get access token")
         if qq_number not in self.user_data['token']:
             return None
 
-        logger.info("进行222：get access token")
+        logger.info("进行2：get access token")
 
         try:
             # 1. 刷新token
@@ -490,7 +490,23 @@ class ResourceManager:
                 self.save_user_data()
                 return data['friend_code']
         else:
-            logger.error("绑定失败！")
+            # 尝试用个人token查询好友码
+            token_data = await self.get_access_token(qq_number)
+
+            if token_data is None:
+                logger.error("无法获取访问令牌，无法查询overpower！")
+                return None
+
+            url = "https://maimai.lxns.net/api/v0/user/chunithm/player"
+            headers = {
+                "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
+            }
+            data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+            if data is None:
+                logger.error("查询玩家信息失败，无法获取好友码！")
+                return None
+            return data.get('friend_code')
+
         
     async def get_player(self, friend_code, total_time=10):
         url = f"https://maimai.lxns.net/api/v0/chunithm/player/{friend_code}"
@@ -526,6 +542,11 @@ class ResourceManager:
         
     async def get_overpower_level(self, qq_number: str, total_time=10):
         token_data = await self.get_access_token(qq_number)
+
+        if token_data is None:
+            logger.error("无法获取访问令牌，无法查询overpower！")
+            return None
+
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
@@ -587,7 +608,9 @@ class ResourceManager:
         op_list = {} # 防止有重复的成绩，dict的格式为：(song_id, level_index): (overpower, full_combo, rank)
         
         for score in data:
-            song_id = score.get('id')
+            song_id = score.get('id', 9999)
+            if song_id not in self.song_map or song_id >= 8000: # 防止删除曲的成绩引发bug，WE谱不计入榜单
+                continue
             level_index = score.get('level_index')
             overpower = self.calc_overpower(score)
             full_combo = score.get('full_combo')
@@ -667,6 +690,11 @@ class ResourceManager:
     
     async def get_overpower_version(self, qq_number: str, total_time=10):
         token_data = await self.get_access_token(qq_number)
+        
+        if token_data is None:
+            logger.error("无法获取访问令牌，无法查询overpower！")
+            return None
+
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
@@ -725,7 +753,9 @@ class ResourceManager:
         op_list = {} # 防止有重复的成绩，dict的格式为：song_id: (overpower, full_combo, rank)
         
         for score in data:
-            song_id = score.get('id')
+            song_id = score.get('id', 9999)
+            if song_id not in self.song_map or song_id >= 8000: # 防止删除曲的成绩引发bug，WE谱不计入榜单
+                continue
             level_index = score.get('level_index')
             overpower = self.calc_overpower(score)
             full_combo = score.get('full_combo')
@@ -805,6 +835,11 @@ class ResourceManager:
     
     async def get_overpower_genre(self, qq_number: str, total_time=10):
         token_data = await self.get_access_token(qq_number)
+
+        if token_data is None:
+            logger.error("无法获取访问令牌，无法查询overpower！")
+            return None
+
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
@@ -864,7 +899,9 @@ class ResourceManager:
         op_list = {} # 防止有重复的成绩，dict的格式为：song_id: (overpower, full_combo, rank)
         
         for score in data:
-            song_id = score.get('id')
+            song_id = score.get('id', 9999)
+            if song_id not in self.song_map or song_id >= 8000: # 防止删除曲的成绩引发bug，WE谱不计入榜单
+                continue
             level_index = score.get('level_index')
             overpower = self.calc_overpower(score)
             full_combo = score.get('full_combo')
@@ -1056,17 +1093,14 @@ class ResourceManager:
 
         return {"bests": b30_list[:30], "new_bests": n20_list[:20]}
     
-    async def get_list(self):
-        return
-    
     def get_dsb(self, param):
         min_const, max_const = self.level_map.get(param, (0, 0))
         song_list = {}
-        const = min_const
-        while const <= max_const:
+        const = max_const
+        while const >= min_const:
             const = round(const, 1) # 避免浮点数精度问题
             song_list[const] = []
-            const += 0.1
+            const -= 0.1
 
         for song in self.songs:
             song_id = song.get('id', 9999)
@@ -1091,6 +1125,11 @@ class ResourceManager:
     
     async def get_list(self, param, qq_number, total_time=10):
         token_data = await self.get_access_token(qq_number)
+
+        if token_data is None:
+            logger.error("无法获取访问令牌，无法查询overpower！")
+            return None
+
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
@@ -1103,8 +1142,8 @@ class ResourceManager:
 
         min_const, max_const = self.level_map.get(param, (0, 0))
         song_list = {}
-        const = min_const
-        while const <= max_const:
+        const = max_const
+        while const >= min_const:
             const = round(const, 1) # 避免浮点数精度问题
             song_list[const] = {
                 'songs': {},
@@ -1120,7 +1159,7 @@ class ResourceManager:
                     'user_op': 0
                 }
             }
-            const += 0.1
+            const -= 0.1
 
         for song in self.songs:
             song_id = song.get('id', 9999)
@@ -1149,6 +1188,8 @@ class ResourceManager:
 
         for score in data:
             song_id = score.get('id', 9999)
+            if song_id not in self.song_map or song_id >= 8000: # 防止删除曲的成绩引发bug，WE谱不计入榜单
+                continue
             level_index = score.get('level_index', 0)
             const = self.song_map[song_id]['difficulties'][level_index].get('level_value', 0)
             const = round(const, 1) # 避免浮点数精度问题
