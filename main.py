@@ -195,13 +195,11 @@ class ChunithmBot(Star):
 
     @filter.command("bind")
     async def cmd_bind(self, event: AstrMessageEvent):
-        """绑定落雪账号。用法：/bind [QQ号]"""
+        """绑定落雪账号。用法：/bind"""
         full_message = event.message_str
         parts = full_message.split()
+        qq_number = str(event.get_sender_id())
         if len(parts) <= 1:
-            yield event.plain_result("指令格式错误，正确格式：/bind [QQ号]")
-        elif len(parts) == 2:
-            qq_number = parts[1]
             status = await self.res_mgr.bind_by_qq(qq_number)
             if status == None:
                 reply = "你的落雪账号没有绑定你的QQ账号！请前往 落雪官网 -> 账号详情 -> 第三方应用 -> 第三方账号绑定 以绑定你的QQ账号！\n"
@@ -212,7 +210,7 @@ class ChunithmBot(Star):
                 oauth_link = self.res_mgr.oauth_app.get('oauth_link') + qq_number
                 reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
             else:
-                reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind [QQ号] 来获取授权链接！"
+                reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"
 
             yield event.plain_result(reply)
 

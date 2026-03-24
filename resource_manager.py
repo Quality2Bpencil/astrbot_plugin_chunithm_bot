@@ -6,6 +6,8 @@ from astrbot.api import logger
 from curl_cffi.requests import AsyncSession
 from enum import Enum
 import time
+import sqlite3
+from threading import Lock
 
 class ResourceManager:
     """资源管理器：负责歌曲数据的加载"""
@@ -27,8 +29,14 @@ class ResourceManager:
         self.temp_dir.mkdir(exist_ok=True)
         self.jackets_dir = self.plugin_dir / "jackets"
         self.jackets_dir.mkdir(exist_ok=True)  # 确保目录存在
+        
+        # 数据库配置
+        self.db_file = self.plugin_dir / "user_data.db"
+        self.db_lock = Lock()  # 线程锁，防止并发冲突
+        self.init_db()
+        
+        # 保留user_data用于临时缓存，不再持久化
         self.user_data = {'qq_number': {}, 'token': {}}
-        self.user_data_file = self.plugin_dir / "user_data.json" # 用户QQ号对应好友码与token的dict
         self.developer_api_key = ""
         self.oauth_app = {}
         self.config_file = self.plugin_dir / "config.json"
@@ -92,25 +100,118 @@ class ResourceManager:
             except Exception as e:
                 logger.error(f"读取API密钥与OAuth应用信息失败: {e}")
 
-    def load_user_data(self):
-        """加载用户列表"""
-        if self.user_data_file.exists():
-            try:
-                with open(self.user_data_file, 'r', encoding='utf-8') as f:
-                    self.user_data = json.load(f)
-            except Exception as e:
-                logger.error(f"读取用户列表失败: {e}")
+    def init_db(self):
+        """初始化SQLite数据库"""
+        try:
+            with sqlite3.connect(self.db_file) as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS tokens (
+                        qq_number TEXT PRIMARY KEY,
+                        token_data TEXT NOT NULL,
+                        updated_at INTEGER
+                    )
+                ''')
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS friend_codes (
+                        qq_number TEXT PRIMARY KEY,
+                        friend_code TEXT NOT NULL,
+                        updated_at INTEGER
+                    )
+                ''')
+                conn.commit()
+            logger.info("数据库初始化成功")
+        except Exception as e:
+            logger.error(f"数据库初始化失败: {e}")
 
+    def get_token(self, qq_number: str):
+        """从数据库获取token"""
+        qq_number = str(qq_number)
+        try:
+            with sqlite3.connect(self.db_file) as conn:
+                cursor = conn.execute(
+                    'SELECT token_data FROM tokens WHERE qq_number = ?',
+                    (qq_number,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return json.loads(row[0])
+            return None
+        except Exception as e:
+            logger.error(f"读取token失败 ({qq_number}): {e}")
+            return None
+
+    def save_token(self, qq_number: str, token_data: dict):
+        """保存token到数据库"""
+        qq_number = str(qq_number)
+        try:
+            with self.db_lock:
+                with sqlite3.connect(self.db_file) as conn:
+                    conn.execute(
+                        'INSERT OR REPLACE INTO tokens VALUES (?, ?, ?)',
+                        (qq_number, json.dumps(token_data), int(time.time()))
+                    )
+                    conn.commit()
+            logger.info(f"Token已保存 ({qq_number})")
+        except Exception as e:
+            logger.error(f"保存token失败 ({qq_number}): {e}")
+
+    def get_friend_code_from_db(self, qq_number: str):
+        """从数据库获取好友码"""
+        qq_number = str(qq_number)
+        try:
+            with sqlite3.connect(self.db_file) as conn:
+                cursor = conn.execute(
+                    'SELECT friend_code FROM friend_codes WHERE qq_number = ?',
+                    (qq_number,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row[0]
+            return None
+        except Exception as e:
+            logger.error(f"读取好友码失败 ({qq_number}): {e}")
+            return None
+
+    def save_friend_code(self, qq_number: str, friend_code: str):
+        """保存好友码到数据库"""
+        qq_number = str(qq_number)
+        try:
+            with self.db_lock:
+                with sqlite3.connect(self.db_file) as conn:
+                    conn.execute(
+                        'INSERT OR REPLACE INTO friend_codes VALUES (?, ?, ?)',
+                        (qq_number, friend_code, int(time.time()))
+                    )
+                    conn.commit()
+            logger.info(f"好友码已保存 ({qq_number}): {friend_code}")
+        except Exception as e:
+            logger.error(f"保存好友码失败 ({qq_number}): {e}")
+
+    def load_user_data(self):
+        """加载用户列表（已弃用，保留接口兼容性）"""
+        # 从数据库重新加载所有token和friend_code到内存
+        try:
+            with sqlite3.connect(self.db_file) as conn:
+                # 加载所有token
+                cursor = conn.execute('SELECT qq_number, token_data FROM tokens')
+                self.user_data['token'] = {}
+                for qq_number, token_data in cursor.fetchall():
+                    self.user_data['token'][qq_number] = json.loads(token_data)
+                
+                # 加载所有好友码
+                cursor = conn.execute('SELECT qq_number, friend_code FROM friend_codes')
+                self.user_data['qq_number'] = {}
+                for qq_number, friend_code in cursor.fetchall():
+                    self.user_data['qq_number'][qq_number] = friend_code
+        except Exception as e:
+            logger.error(f"同步数据库到内存失败: {e}")
+        
         return self.user_data
     
     def save_user_data(self):
-        """将用户列表导入json"""
-        if self.user_data:
-            try:
-                with open(self.user_data_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.user_data, f, ensure_ascii=False, indent=4)
-            except Exception as e:
-                logger.error(f"保存用户列表失败: {e}")
+        """保存用户列表（已弃用，不使用内存dict持久化）"""
+        # 已改为使用save_token和save_friend_code
+        pass
 
     async def handle_oauth(self, qq_number, code):
         """
@@ -121,8 +222,7 @@ class ResourceManager:
             code: 授权码      
         """
         qq_number = str(qq_number)
-        self.load_user_data()  # 确保加载最新的用户数据
-        
+
         try:
             # 1. 用 code 换取 token（异步HTTP请求）
             token_data = await self._exchange_code(code)
@@ -136,13 +236,10 @@ class ResourceManager:
             token_data['expires_at'] = current_time + token_data.get('expires_in', 900) # 默认过期时间是15min
             token_data['updated_at'] = current_time
             
-            # 4. 保存到用户token字典
-            self.user_data['token'][qq_number] = token_data
+            # 4. 保存到数据库
+            self.save_token(qq_number, token_data)
             
-            # 5. 保存到文件
-            self.save_user_data()
-            
-            # 6. 记录成功日志
+            # 5. 记录成功日志
             logger.info(f"✅ 用户 {qq_number} 授权成功！")
             logger.info(f"   access_token: {token_data['access_token'][:20]}...")
             
@@ -201,38 +298,36 @@ class ResourceManager:
                 return result
 
     async def get_access_token(self, qq_number: str):
-        self.load_user_data()  # 强制从文件重新加载
-    
+        qq_number = str(qq_number)
         logger.info(f"获取用户 {qq_number} 的access token")
         
-        if qq_number not in self.user_data['token']:
+        # 从数据库读取token
+        token_data = self.get_token(qq_number)
+        if token_data is None:
             logger.warning(f"用户 {qq_number} 未授权")
             return None
 
         try:
             # 1. 刷新token
-            refresh_token = self.user_data['token'][qq_number].get('refresh_token')
-            token_data = await self._refresh_access_token(refresh_token)
+            refresh_token = token_data.get('refresh_token')
+            new_token_data = await self._refresh_access_token(refresh_token)
             
             # 2. 验证token数据
-            if not token_data or 'access_token' not in token_data:
+            if not new_token_data or 'access_token' not in new_token_data:
                 return None
             
             # 3. 计算过期时间
             current_time = int(time.time())
-            token_data['expires_at'] = current_time + token_data.get('expires_in', 900) # 默认过期时间是15min
-            token_data['updated_at'] = current_time
+            new_token_data['expires_at'] = current_time + new_token_data.get('expires_in', 900) # 默认过期时间是15min
+            new_token_data['updated_at'] = current_time
             
-            # 4. 保存到用户token字典
-            self.user_data['token'][qq_number] = token_data
+            # 4. 保存到数据库
+            self.save_token(qq_number, new_token_data)
             
-            # 5. 保存到文件
-            self.save_user_data()
-            
-            # 6. 记录成功日志
+            # 5. 记录成功日志
             logger.info(f"✅ 用户 {qq_number} 刷新token成功！")
 
-            return token_data
+            return new_token_data
             
         except asyncio.TimeoutError:
             logger.error("请求超时，服务器可能暂时无法访问")
@@ -363,7 +458,7 @@ class ResourceManager:
             logger.error(f"加载数据失败: {e}")
             self.songs = []
 
-    def cleanup_old_files(self, max_age_hours=0):
+    def cleanup_old_files(self, max_age_hours=1):
         """
         清理过期的临时文件
         
@@ -474,25 +569,29 @@ class ResourceManager:
             return None
         
     async def get_friend_code(self, qq_number, total_time=10):
-        if self.user_data.get("qq_number", {}).get(qq_number):
+        qq_number = str(qq_number)
+        # 从数据库查询好友码
+        cached_friend_code = self.get_friend_code_from_db(qq_number)
+        if cached_friend_code:
             logger.info(f"成功在本地查询到{qq_number}的好友码")
-            return self.user_data["qq_number"][qq_number]
+            return cached_friend_code
         else:
             logger.info(f"没有在本地查询到{qq_number}的好友码，正在向落雪查询好友码...")
             return await self.bind_by_qq(qq_number, total_time=total_time)
 
     async def bind_by_qq(self, qq_number, total_time=10):
+        qq_number = str(qq_number)
         url = f"https://maimai.lxns.net/api/v0/chunithm/player/qq/{qq_number}"
         data = await self.get_from_developer_api(url=url, total_time=total_time)
 
         if data != None and data.get('friend_code'):
-            if data['friend_code'] == self.user_data.get("qq_number", {}).get(qq_number):
+            cached_code = self.get_friend_code_from_db(qq_number)
+            if data['friend_code'] == cached_code:
                 logger.info(f"QQ号{qq_number}已与落雪账号绑定，不需重复绑定")
                 return data['friend_code']
             else:
                 logger.info(f"QQ号{qq_number}绑定落雪账号成功！")
-                self.user_data['qq_number'][qq_number] = data['friend_code']
-                self.save_user_data()
+                self.save_friend_code(qq_number, data['friend_code'])
                 return data['friend_code']
         else:
             # 尝试用个人token查询好友码
@@ -510,7 +609,11 @@ class ResourceManager:
             if data is None:
                 logger.error("查询玩家信息失败，无法获取好友码！")
                 return None
-            return data.get('friend_code')
+            
+            friend_code = data.get('friend_code')
+            if friend_code:
+                self.save_friend_code(qq_number, friend_code)
+            return friend_code
 
         
     async def get_player(self, friend_code, total_time=10):
