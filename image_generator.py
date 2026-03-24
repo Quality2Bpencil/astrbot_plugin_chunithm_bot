@@ -8,7 +8,7 @@ import time
 from astrbot.api import logger
 import unicodedata
 
-from .resource_manager import ResourceManager, ParamType, Level
+from .resource_manager import ResourceManager
 
 class ImageGenerator:
     def __init__(self, plugin_name: str, resource_manager, data_root: Path):
@@ -219,6 +219,75 @@ class ImageGenerator:
         out = Image.alpha_composite(out, shape_layer)
         return out
 
+    def draw_shadow_gradient_rounded_rect(
+        base_img,
+        xy,                          # (x1, y1, x2, y2)
+        radius=30,
+        top_color=(165, 89, 255, 255),   # 上半颜色
+        bottom_color=(255, 255, 255, 255), # 下半颜色
+        transition_center=0.5,       # 过渡中心，0~1
+        transition_width=0.22,       # 过渡带宽度，0~1，越大越柔和
+        shadow_offset=(6, 6),
+        shadow_color=(0, 0, 0, 120),
+        shadow_blur=12
+    ):
+        x1, y1, x2, y2 = xy
+        w = max(1, x2 - x1)
+        h = max(1, y2 - y1)
+
+        # 1) 阴影层
+        shadow_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow_layer)
+        sx1 = x1 + shadow_offset[0]
+        sy1 = y1 + shadow_offset[1]
+        sx2 = x2 + shadow_offset[0]
+        sy2 = y2 + shadow_offset[1]
+        sd.rounded_rectangle((sx1, sy1, sx2, sy2), radius=radius, fill=shadow_color)
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
+
+        # 2) 渐变填充层（先做矩形渐变）
+        grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        gp = grad.load()
+
+        c = max(0.0, min(1.0, transition_center))
+        tw = max(0.001, min(1.0, transition_width))
+        t0 = max(0.0, c - tw / 2.0)
+        t1 = min(1.0, c + tw / 2.0)
+
+        for yy in range(h):
+            t = yy / max(h - 1, 1)
+
+            # 上半固定颜色 -> 中间平滑过渡 -> 下半固定颜色
+            if t <= t0:
+                k = 0.0
+            elif t >= t1:
+                k = 1.0
+            else:
+                u = (t - t0) / (t1 - t0)
+                # smoothstep，让过渡更自然
+                k = u * u * (3 - 2 * u)
+
+            r = int(top_color[0] * (1 - k) + bottom_color[0] * k)
+            g = int(top_color[1] * (1 - k) + bottom_color[1] * k)
+            b = int(top_color[2] * (1 - k) + bottom_color[2] * k)
+            a = int(top_color[3] * (1 - k) + bottom_color[3] * k)
+
+            for xx in range(w):
+                gp[xx, yy] = (r, g, b, a)
+
+        # 3) 圆角蒙版裁切
+        mask = Image.new("L", (w, h), 0)
+        md = ImageDraw.Draw(mask)
+        md.rounded_rectangle((0, 0, w, h), radius=radius, fill=255)
+
+        shape_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+        shape_layer.paste(grad, (x1, y1), mask)
+
+        # 合成：底图 + 阴影 + 形状
+        out = Image.alpha_composite(base_img.convert("RGBA"), shadow_layer)
+        out = Image.alpha_composite(out, shape_layer)
+        return out
+
     def draw_shadow_parallelogram(self, base_img, points, fill,
                                     shadow_offset=(8, 8),
                                     shadow_color=(0, 0, 0, 140),
@@ -241,140 +310,6 @@ class ImageGenerator:
         out = Image.alpha_composite(base_img, shadow_layer)
         out = Image.alpha_composite(out, shape_layer)
         return out
-
-    def create_grid_image(self, image_paths, output_path=None, 
-                      item_size=200,           # 每个原图的大小（正方形边长）
-                      bg_padding=20,           # 圆角矩形比原图大出的边距
-                      corner_radius=30,        # 圆角矩形的圆角半径
-                      margin=30,                # 整体之间的间距
-                      rows=None,                 # 指定行数，如果不指定则自动计算
-                      bg_color=(0, 255, 255)    # 背景颜色，青色
-                      ):
-        """
-        生成网格排列的图片，每张原图底部添加圆角矩形背景
-        
-        Args:
-            image_paths: 图片路径列表
-            output_path: 输出路径，如果不指定则自动生成
-            item_size: 每个原图的大小（正方形边长）
-            bg_padding: 圆角矩形比原图大出的边距
-            corner_radius: 圆角矩形的圆角半径
-            margin: 整体之间的间距
-            rows: 指定行数，如果不指定则自动计算
-            bg_color: 背景颜色，RGB元组，默认青色 (0, 255, 255)
-        
-        Returns:
-            生成的图片路径
-        """
-        
-        # 计算布局
-        num_images = len(image_paths)
-        cols = 5  # 固定每行5个
-        if rows is None:
-            rows = math.ceil(num_images / cols)  # 自动计算行数
-        
-        # 计算每个整体的尺寸（原图 + 底部的圆角矩形）
-        # 圆角矩形比原图大，所以要加上边距
-        item_total_width = item_size + bg_padding * 2
-        item_total_height = item_size + bg_padding * 2
-        
-        # 计算整个画布的尺寸
-        canvas_width = cols * item_total_width + (cols + 1) * margin
-        canvas_height = rows * item_total_height + (rows + 1) * margin
-        
-        # 创建背景画布
-        canvas = Image.new('RGB', (canvas_width, canvas_height), bg_color)
-        
-        # 处理每张图片
-        for idx, img_path in enumerate(image_paths):
-            if idx >= rows * cols:
-                break  # 超出布局范围的图片忽略
-                
-            # 计算当前图片的位置（行列）
-            row = idx // cols
-            col = idx % cols
-            
-            # 计算这个整体的左上角坐标
-            base_x = margin + col * (item_total_width + margin)
-            base_y = margin + row * (item_total_height + margin)
-            
-            # 计算圆角矩形的位置和大小
-            rect_x = base_x
-            rect_y = base_y
-            rect_width = item_total_width
-            rect_height = item_total_height
-            
-            # 创建圆角矩形遮罩
-            rect_mask = Image.new('RGBA', (rect_width, rect_height), (0, 0, 0, 0))
-            rect_draw = ImageDraw.Draw(rect_mask)
-            
-            # 绘制圆角矩形（白色，带透明度）
-            rect_draw.rounded_rectangle(
-                [(0, 0), (rect_width, rect_height)],
-                radius=corner_radius,
-                fill=(255, 255, 255, 200)  # 半透明白色背景
-            )
-
-            # 添加左上角的等腰梯形缎带
-            p1 = (int(rect_width * 0.12), 0)
-            p2 = (int(rect_width * 0.4), 0)
-            p3 = (0, int(rect_height * 0.4))
-            p4 = (0, int(rect_height * 0.12))
-
-            # 绘制梯形（实际上是一个四边形，从p1->p2->p3->p4->p1）
-            rect_draw.polygon(
-                [p1, p2, p3, p4],
-                fill=(128, 0, 128, 255)  # 紫色填充
-            )
-            
-            # 将圆角矩形粘贴到画布上
-            canvas.paste(rect_mask, (rect_x, rect_y), rect_mask)
-            
-            try:
-                # 加载并处理原图
-                img = Image.open(img_path).convert('RGBA')
-                
-                # 将原图调整为指定大小（保持正方形）
-                img = img.resize((item_size, item_size), Image.Resampling.LANCZOS)
-                
-                # 计算原图的位置（在圆角矩形内部居中）
-                img_x = base_x + bg_padding
-                img_y = base_y + bg_padding  # 距离顶部bg_padding像素
-                
-                # 创建原图的圆角遮罩
-                img_mask = Image.new('L', (item_size, item_size), 0)
-                img_draw = ImageDraw.Draw(img_mask)
-                img_draw.rounded_rectangle(
-                    [(0, 0), (item_size, item_size)],
-                    radius=corner_radius - bg_padding,
-                    fill=255
-                )
-                img.putalpha(img_mask)
-                
-                # 将原图粘贴到画布上
-                canvas.paste(img, (img_x, img_y), img if img.mode == 'RGBA' else None)
-                
-            except Exception as e:
-                logger.error(f"处理图片 {img_path} 时出错: {e}")
-                # 如果图片加载失败，在相应位置画一个灰色方块
-                error_draw = ImageDraw.Draw(canvas)
-                error_draw.rectangle(
-                    [img_x, img_y, img_x + item_size, img_y + item_size],
-                    fill=(128, 128, 128)
-                )
-                error_draw.text(
-                    (img_x + 10, img_y + item_size//2 - 10),
-                    "加载失败",
-                    fill=(255, 255, 255)
-                )
-        
-        # 保存图片
-        if output_path is None:
-            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-            output_path = self.temp_dir / f"grid_{random_name}.png"
-        
-        canvas.save(output_path, 'PNG')
-        return str(output_path)
     
     def truncate_text_to_fit(self, draw, text, font, max_width, ellipsis="..."):
         """
@@ -410,29 +345,236 @@ class ImageGenerator:
                 if file_age > max_age_hours * 3600:
                     file_path.unlink()
 
-    async def create_dsb(self, param_type, param):
+    async def create_dsb_image(self, data, output_path=None):
         """
-        生成定数表
-
-        Args:
-            param_type: 参数类型（等级或定数）
-            param: 等级或定数参数
+        生成定数表图片
         """
-        min_const, max_const = 15.7, 15.7
-        if param_type == ParamType.LEVEL:
-            min_const, max_const = param.value
-        elif param_type == ParamType.CONST:
-            min_const, max_const = param, param
+        background_path = self.bgs_dir / 'general_bg.png'
 
-        image_paths = []
-        for song in self.res_mgr.songs:
-            for difficulty in song.get('difficulties', []):
-                level_value =  difficulty.get('level_value', 0)
-                if level_value >= min_const and level_value <= max_const:
-                    song_id = song.get('id', 0)
-                    image_paths.append(await self.res_mgr.get_jacket(song_id))
+        # 画布尺寸
+        canvas_width = 1600
+        canvas_height = 85
 
-        return self.create_grid_image(image_paths)
+        for const, songs in data.items():
+            row_num = (len(songs) + 7) // 8
+            canvas_height += 120 + row_num * 183 + 40
+
+        # 加载背景图片
+        if background_path and os.path.exists(background_path):
+            # 加载背景图片并调整到画布大小
+            background = Image.open(background_path).convert('RGBA')
+            background = background.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+            canvas = background.copy()
+        else:
+            # 没有背景图片，使用纯色背景
+            canvas = Image.new('RGB', (canvas_width, canvas_height), (20, 20, 30))
+
+        # 确保后续 alpha 合成稳定
+        canvas = canvas.convert('RGBA')
+
+        # 定数框参数
+        frame_base = 250
+        frame_height = 75
+        frame_tan_a = 3
+
+        # 圆角矩形底
+        col_num = 8
+        bg_x0, bg_y0 = 81, 120
+        bg_width = 157
+        bg_height = 157
+        bg_spacing_x = 183
+        bg_spacing_y = 183
+        rect_specs = []
+
+        top_y = 70
+        
+        for const, songs in data.items():
+            # 在中间画一个平行四边形（定数框）
+            p1_x, p1_y = 688, top_y
+            p2_x, p2_y = p1_x + frame_base, p1_y
+            p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
+            p4_x, p4_y = p3_x - frame_base, p3_y
+
+            parallelogram_points = [
+                (p1_x, p1_y),
+                (p2_x, p2_y),
+                (p3_x, p3_y),
+                (p4_x, p4_y),
+            ]
+            canvas = self.draw_shadow_parallelogram(
+                canvas,
+                points=parallelogram_points,
+                fill=(255, 255, 255, 235),
+                shadow_offset=(3, 3),
+                shadow_color=(15, 25, 70, 130),
+                blur_radius=10,
+            )
+
+            # 圆角矩形底
+            index = 0
+            for song in songs:
+                level_index = song.get('level_index', -1)
+                x1 = bg_x0 + (index % col_num) * bg_spacing_x
+                y1 = top_y + bg_y0 + (index // col_num) * bg_spacing_y
+                x2 = x1 + bg_width
+                y2 = y1 + bg_height
+
+                # 背景颜色
+                color = (255, 255, 255, 255) # 默认为白色
+                if level_index == 4: 
+                    color = (30, 30, 30, 255) # 灰色
+                elif level_index == 3:
+                    color = (165, 89, 255, 255) # 紫色
+                elif level_index == 2:
+                    color = (255, 0, 0, 255) # 红色
+                elif level_index == 1:
+                    color = (255, 192, 0, 255) # 橙色
+                elif level_index == 0:
+                    color = (0, 176, 80, 255) # 绿色
+
+                rect_specs.append(
+                    {
+                        'xy': (x1, y1, x2, y2),
+                        'radius': 31,
+                        'fill': color,
+                        'shadow_offset': (3, 3),
+                        'shadow_color': (15, 25, 70, 130),
+                        'blur_radius': 10,
+                    }
+                )
+                index += 1
+
+            row_num = (len(songs) + col_num - 1) // col_num
+            top_y += bg_y0 + row_num * bg_spacing_y + 40
+
+        for spec in rect_specs:
+            canvas = self.draw_shadow_rounded_rect(canvas, **spec)    
+
+        const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
+        const_font.set_variation_by_name('Bold')
+
+        text_data = []
+        draw = ImageDraw.Draw(canvas, 'RGBA')
+        
+        small_base = 16
+        jacket_size = 170
+        jacket_radius = 26
+        
+        top_y = 70
+
+        for const, songs in data.items():
+            p1_x, p1_y = 688, top_y
+            p2_x, p2_y = p1_x + frame_base, p1_y
+            p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
+            p4_x, p4_y = p3_x - frame_base, p3_y
+
+            # 左侧的绿色平行四边形
+            parallelogram_points = [
+                (p1_x, p1_y),
+                (p1_x + small_base, p2_y),
+                (p4_x + small_base, p3_y),
+                (p4_x, p4_y),
+            ]
+            draw.polygon(
+                parallelogram_points,
+                fill=(0, 204, 107, 255) # 绿色
+            )
+            
+            # 右侧的紫色平行四边形
+            parallelogram_points = [
+                (p2_x - small_base, p1_y),
+                (p2_x, p2_y),
+                (p3_x, p3_y),
+                (p3_x - small_base, p4_y),
+            ]
+            draw.polygon(
+                parallelogram_points,
+                fill=(165, 89, 255, 255) # 紫色
+            )
+
+            const_x = canvas_width // 2
+            const_y = top_y + 38
+
+            text_data.append({
+                'position': (const_x, const_y),
+                'text': f'{const:.1f}',
+                'color': (0, 0, 0, 255),
+                'font': const_font,
+                'anchor': 'mm'
+            })
+
+            # 每首歌
+            index = 0
+            for song in songs:
+                # ========== 曲绘部分 ==========
+                song_id = song.get('id', 2353) # 其实2353是幻想即兴曲（
+                jacket_path = await self.res_mgr.get_jacket(song_id)
+                level_index = song.get('level_index', -1)
+
+                jacket_x = bg_x0 + (index % col_num) * bg_spacing_x + 12
+                jacket_y = top_y + bg_y0 + (index // col_num) * bg_spacing_y + 12
+
+                try:
+                    # 加载曲绘
+                    jacket = Image.open(jacket_path).convert('RGBA')
+                    jacket = jacket.resize((jacket_size, jacket_size), Image.Resampling.LANCZOS)
+                    
+                    # 在处理前先放大图片
+                    scale_factor = 2  # 放大2倍
+                    temp_size = (jacket_size * scale_factor, jacket_size * scale_factor)
+                    jacket = Image.open(jacket_path).convert('RGBA')
+                    jacket = jacket.resize(temp_size, Image.Resampling.LANCZOS)  # 使用高质量的缩放
+
+                    # 处理圆角和阴影
+                    jacket_with_shadow = self.add_rounded_corner_with_outer_blur(
+                        jacket,
+                        corner_radius=jacket_radius * scale_factor,  # 圆角半径也相应放大
+                        blur_radius=6 * scale_factor,
+                        shadow_opacity=110
+                    )
+
+                    # 最后再缩小回目标尺寸
+                    final_size = (jacket_size, jacket_size)
+                    jacket_with_shadow = jacket_with_shadow.resize(final_size, Image.Resampling.LANCZOS)
+
+                    # 计算偏移（因为有扩展区域）
+                    blur_extension = 6 * 3  # blur_radius * 3
+                    canvas.paste(
+                        jacket_with_shadow,
+                        (jacket_x - blur_extension, jacket_y - blur_extension),
+                        jacket_with_shadow
+                    )
+
+                except Exception as e:
+                    # 如果加载失败，画一个灰色矩形
+                    fallback = Image.new('RGBA', (jacket_size, jacket_size), (200, 200, 200))
+                    canvas.paste(fallback, (jacket_x - 5, jacket_y - 5), fallback)
+                    
+                    # 添加文字
+                    text_img = Image.new('RGBA', (jacket_size, jacket_size), (0, 0, 0, 0))
+                    text_draw = ImageDraw.Draw(text_img)
+                    text_draw.text((jacket_size//2 - 40, jacket_size//2 - 10), 
+                                "No Image", fill=(100, 100, 100))
+                    canvas.paste(text_img, (jacket_x, jacket_y), text_img)
+                
+                index += 1
+            
+            row_num = (len(songs) + col_num - 1) // col_num
+            top_y += bg_y0 + row_num * bg_spacing_y + 40
+
+        # 添加文字
+        for item in text_data:
+            draw.text(item['position'], item['text'], 
+                    fill=item['color'], font=item['font'],
+                    anchor=item.get('anchor'))
+        
+        # 保存图片
+        if output_path is None:
+            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+            output_path = self.temp_dir / f"overpower_{random_name}.png"
+        
+        canvas.save(output_path, 'PNG', quality=95)
+        return str(output_path)
 
     async def create_song_info_image(self, song_data, output_path=None):
         """
@@ -1572,6 +1714,236 @@ class ImageGenerator:
                     )
 
             index += 1
+
+        # 添加文字
+        for item in text_data:
+            draw.text(item['position'], item['text'], 
+                    fill=item['color'], font=item['font'],
+                    anchor=item.get('anchor'))
+
+        # 保存图片
+        if output_path is None:
+            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+            output_path = self.temp_dir / f"overpower_{random_name}.png"
+        
+        canvas.save(output_path, 'PNG', quality=95)
+        return str(output_path)
+    
+    async def create_list_image(self, data, player_name="CHUNITHM", output_path=None):
+        background_path = self.bgs_dir / 'general_bg.png'
+
+        # 画布尺寸
+        canvas_width = 1200
+        canvas_height = 1600
+
+        # 加载背景图片
+        if background_path and os.path.exists(background_path):
+            # 加载背景图片并调整到画布大小
+            background = Image.open(background_path).convert('RGBA')
+            background = background.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+            canvas = background.copy()
+        else:
+            # 没有背景图片，使用纯色背景
+            canvas = Image.new('RGB', (canvas_width, canvas_height), (20, 20, 30))
+
+        # 确保后续 alpha 合成稳定
+        canvas = canvas.convert('RGBA')
+
+        # 在顶部画一个平行四边形（ID框）
+        frame_base = 400
+        frame_height = 89
+        frame_tan_a = 3
+        p1_x, p1_y = 110, 60
+        p2_x, p2_y = p1_x + frame_base, p1_y
+        p3_x, p3_y = round(p2_x - frame_height / frame_tan_a), p2_y + frame_height
+        p4_x, p4_y = p3_x - frame_base, p3_y
+
+        parallelogram_points = [
+            (p1_x, p1_y),
+            (p2_x, p2_y),
+            (p3_x, p3_y),
+            (p4_x, p4_y),
+        ]
+        canvas = self.draw_shadow_parallelogram(
+            canvas,
+            points=parallelogram_points,
+            fill=(255, 255, 255, 235),
+            shadow_offset=(3, 3),
+            shadow_color=(15, 25, 70, 130),
+            blur_radius=10,
+        )
+
+        # 玩家昵称
+        name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 48)
+        name_x = 295
+        name_y = 107
+
+        text_data = [
+            {
+                # 昵称
+                'text': unicodedata.normalize("NFKC", player_name), # 全角转半角
+                'position': (name_x, name_y),
+                'font': name_font,
+                'color': 'black',
+                'anchor': 'mm'
+            },
+        ]
+
+        # 定数框参数
+        frame_base = 250
+        frame_height = 75
+        frame_tan_a = 3
+
+        # 圆角矩形底
+        col_num = 8
+        bg_x0, bg_y0 = 81, 120
+        bg_width = 157
+        bg_height = 157
+        bg_spacing_x = 183
+        bg_spacing_y = 183
+        rect_specs = []
+
+        top_y = 70
+        
+        for const, songs in data.items():
+            # 圆角矩形底
+            index = 0
+            for song in songs:
+                level_index = song.get('level_index', -1)
+                x1 = bg_x0 + (index % col_num) * bg_spacing_x
+                y1 = top_y + bg_y0 + (index // col_num) * bg_spacing_y
+                x2 = x1 + bg_width
+                y2 = y1 + bg_height
+
+                # 背景颜色
+                color = (255, 255, 255, 255) # 默认为白色
+                if level_index == 4: 
+                    color = (30, 30, 30, 255) # 灰色
+                elif level_index == 3:
+                    color = (165, 89, 255, 255) # 紫色
+                elif level_index == 2:
+                    color = (255, 0, 0, 255) # 红色
+                elif level_index == 1:
+                    color = (255, 192, 0, 255) # 橙色
+                elif level_index == 0:
+                    color = (0, 176, 80, 255) # 绿色
+
+                rect_specs.append(
+                    {
+                        'xy': (x1, y1, x2, y2),
+                        'radius': 31,
+                        'fill': color,
+                        'shadow_offset': (3, 3),
+                        'shadow_color': (15, 25, 70, 130),
+                        'blur_radius': 10,
+                    }
+                )
+                index += 1
+
+            row_num = (len(songs) + col_num - 1) // col_num
+            top_y += bg_y0 + row_num * bg_spacing_y + 40
+
+        for spec in rect_specs:
+            canvas = self.draw_shadow_rounded_rect(canvas, **spec)    
+
+        const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
+        const_font.set_variation_by_name('Bold')
+
+        text_data = []
+        draw = ImageDraw.Draw(canvas, 'RGBA')
+        
+        small_base = 16
+        jacket_size = 170
+        jacket_radius = 26
+        
+        top_y = 70
+
+        for const, songs in data.items():
+
+            # 每首歌
+            index = 0
+            for song in songs:
+                # ========== 曲绘部分 ==========
+                song_id = song.get('id', 2353) # 其实2353是幻想即兴曲（
+                jacket_path = await self.res_mgr.get_jacket(song_id)
+                level_index = song.get('level_index', -1)
+
+                jacket_x = bg_x0 + (index % col_num) * bg_spacing_x + 12
+                jacket_y = top_y + bg_y0 + (index // col_num) * bg_spacing_y + 12
+
+                try:
+                    # 加载曲绘
+                    jacket = Image.open(jacket_path).convert('RGBA')
+                    jacket = jacket.resize((jacket_size, jacket_size), Image.Resampling.LANCZOS)
+                    
+                    # 在处理前先放大图片
+                    scale_factor = 2  # 放大2倍
+                    temp_size = (jacket_size * scale_factor, jacket_size * scale_factor)
+                    jacket = Image.open(jacket_path).convert('RGBA')
+                    jacket = jacket.resize(temp_size, Image.Resampling.LANCZOS)  # 使用高质量的缩放
+
+                    # 处理圆角和阴影
+                    jacket_with_shadow = self.add_rounded_corner_with_outer_blur(
+                        jacket,
+                        corner_radius=jacket_radius * scale_factor,  # 圆角半径也相应放大
+                        blur_radius=6 * scale_factor,
+                        shadow_opacity=110
+                    )
+
+                    # 最后再缩小回目标尺寸
+                    final_size = (jacket_size, jacket_size)
+                    jacket_with_shadow = jacket_with_shadow.resize(final_size, Image.Resampling.LANCZOS)
+
+                    # 计算偏移（因为有扩展区域）
+                    blur_extension = 6 * 3  # blur_radius * 3
+                    canvas.paste(
+                        jacket_with_shadow,
+                        (jacket_x - blur_extension, jacket_y - blur_extension),
+                        jacket_with_shadow
+                    )
+
+                except Exception as e:
+                    # 如果加载失败，画一个灰色矩形
+                    fallback = Image.new('RGBA', (jacket_size, jacket_size), (200, 200, 200))
+                    canvas.paste(fallback, (jacket_x - 5, jacket_y - 5), fallback)
+                    
+                    # 添加文字
+                    text_img = Image.new('RGBA', (jacket_size, jacket_size), (0, 0, 0, 0))
+                    text_draw = ImageDraw.Draw(text_img)
+                    text_draw.text((jacket_size//2 - 40, jacket_size//2 - 10), 
+                                "No Image", fill=(100, 100, 100))
+                    canvas.paste(text_img, (jacket_x, jacket_y), text_img)
+                
+                index += 1
+            
+            row_num = (len(songs) + col_num - 1) // col_num
+            top_y += bg_y0 + row_num * bg_spacing_y + 40
+
+        small_base = 20
+
+        # 左侧的绿色平行四边形
+        parallelogram_points = [
+            (p1_x, p1_y),
+            (p1_x + small_base, p2_y),
+            (p4_x + small_base, p3_y),
+            (p4_x, p4_y),
+        ]
+        draw.polygon(
+            parallelogram_points,
+            fill=(0, 204, 107, 255) # 绿色
+        )
+        
+        # 右侧的紫色平行四边形
+        parallelogram_points = [
+            (p2_x - small_base, p1_y),
+            (p2_x, p2_y),
+            (p3_x, p3_y),
+            (p3_x - small_base, p4_y),
+        ]
+        draw.polygon(
+            parallelogram_points,
+            fill=(165, 89, 255, 255) # 紫色
+        )
 
         # 添加文字
         for item in text_data:

@@ -60,6 +60,17 @@ class ResourceManager:
             "音击舞萌": "击舞",
             "原创": "原创"
         }
+        self.level_map = {}
+        self.generate_level_map()
+
+    def generate_level_map(self):
+        const = 1.0
+        while const <= 15.9:
+            self.level_map[f"{const:.1f}"] = (const, const)
+            const += 0.1
+        for level in range(1, 16):
+            self.level_map[str(level)] = (level, level + 0.4)
+            self.level_map[str(level) + '+'] = (level + 0.5, level + 0.9)
 
     def load_config(self):
         """获取开发者API密钥与OAuth应用信息"""
@@ -1021,13 +1032,34 @@ class ResourceManager:
                         b30_lowest = b30_list[29]['level_value']
 
         return {"bests": b30_list[:30], "new_bests": n20_list[:20]}
-        
-class ParamType(Enum):
-    LEVEL = 0
-    CONST = 1
+    
+    async def get_list(self):
+        return
+    
+    async def get_dsb(self, param):
+        min_const, max_const = self.level_map.get(param, (0, 0))
+        song_list = {}
+        const = min_const
+        while const <= max_const:
+            song_list[const] = []
+            const += 0.1
 
-class Level(Enum):
-    L14 = (14.0, 14.4)
-    L14P = (14.5, 14.9)
-    L15 = (15.0, 15.4)
-    L15P = (15.5, 15.9)
+        for song in self.songs:
+            song_id = song.get('id', 9999)
+            title = song.get('title', 'UNKNOWN')
+            if song_id >= 8000: # WE谱
+                continue
+            for difficulty in song['difficulties']:
+                const = difficulty['level_value']
+                if const < min_const or const > max_const:
+                    continue
+                song_info = {
+                    'id': song_id,
+                    'title': title,
+                    'level_index': difficulty['difficulty']
+                }
+                song_list[const].append(song_info)
+
+        song_list = {k: v for k, v in song_list.items() if v} # 过滤掉没有歌曲的定数
+
+        return song_list

@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from thefuzz import fuzz
 
-from .resource_manager import ResourceManager, ParamType, Level
+from .resource_manager import ResourceManager
 from .image_generator import ImageGenerator
 from .web_server import OAuthWebServer
 
@@ -172,13 +172,14 @@ class ChunithmBot(Star):
         if len(parts) >= 2:
             param = parts[1]  # 获取难度或定数参数
 
-            # 分析参数           
-            param_type = ParamType.CONST
-            level = Level.L14
-            const = 14.2
+            song_list = await self.res_mgr.get_dsb(param)
+
+            if song_list is None or song_list == {}:
+                yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度或定数是否正确。")
+                return
 
             # 调用create_dsb生成图片
-            image_path = await self.img_gen.create_dsb(param_type, const)  # 假设把参数传给create_dsb
+            image_path = await self.img_gen.create_dsb_image(data=song_list)
             
             # 检查图片是否生成成功
             if image_path and os.path.exists(image_path):
@@ -190,7 +191,7 @@ class ChunithmBot(Star):
             else:
                 yield event.plain_result("图片生成失败")
         else:
-            yield event.plain_result("指令格式错误，正确格式：/chu dsb [难度或定数]")
+            yield event.plain_result("指令格式错误，正确格式：/dsb [难度或定数]")
 
     @filter.command("bind")
     async def cmd_bind(self, event: AstrMessageEvent):
@@ -302,6 +303,36 @@ class ChunithmBot(Star):
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="genre")
             yield event.image_result(image_path)
+
+    @filter.command("list")
+    async def cmd_list(self, event: AstrMessageEvent):
+        """查询list。用法：/list"""
+        full_message = event.message_str
+        parts = full_message.split()
+        if len(parts) >= 2:
+            param = parts[1]  # 获取难度或定数参数
+
+            song_list = await self.res_mgr.get_dsb(param)
+
+            if song_list is None or song_list == {}:
+                yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度或定数是否正确。")
+                return
+
+            # 调用create_dsb生成图片
+            image_path = await self.img_gen.create_list_image(data=song_list)
+            return
+            
+            # 检查图片是否生成成功
+            if image_path and os.path.exists(image_path):
+                # 返回图片
+                yield event.image_result(image_path)
+                
+                # 可选：清理临时文件
+                # self.image_gen.cleanup_old_files()
+            else:
+                yield event.plain_result("图片生成失败")
+        else:
+            yield event.plain_result("指令格式错误，正确格式：/dsb [难度或定数]")
 
     @filter.command("s_refresh")
     async def cmd_refresh(self, event: AstrMessageEvent):
