@@ -152,7 +152,7 @@ class ResourceManager:
 
     def get_token(self, qq_number: str):
         """从数据库获取token"""
-        qq_number = self._normalize_qq(qq_number)
+        qq_number = self.decode(qq_number)  # 将短码解回QQ号
         try:
             with sqlite3.connect(self.db_file) as conn:
                 cursor = conn.execute(
