@@ -196,20 +196,19 @@ class ChunithmBot(Star):
         full_message = event.message_str
         parts = full_message.split()
         qq_number = str(event.get_sender_id())
-        if len(parts) <= 1:
-            status = await self.res_mgr.bind_by_qq(qq_number)
-            if status == None:
-                reply = "你的落雪账号没有绑定你的QQ账号！请前往 落雪官网 -> 账号详情 -> 第三方应用 -> 第三方账号绑定 以绑定你的QQ账号！\n"
-            else:
-                reply = "好友码绑定成功！\n"
+        status = await self.res_mgr.bind_by_qq(qq_number)
+        if status == None:
+            reply = "你的落雪账号没有绑定你的QQ账号！请前往 落雪官网 -> 账号详情 -> 第三方应用 -> 第三方账号绑定 以绑定你的QQ账号！\n"
+        else:
+            reply = "好友码绑定成功！\n"
 
-            if event.is_private_chat():
-                oauth_link = self.res_mgr.oauth_app.get('oauth_link') + self.res_mgr.encode(qq_number)
-                reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
-            else:
-                reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"
+        if event.is_private_chat():
+            oauth_link = self.res_mgr.oauth_app.get('oauth_link') + self.res_mgr.encode(qq_number)
+            reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
+        else:
+            reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"
 
-            yield event.plain_result(reply)
+        yield event.plain_result(reply)
 
     async def _get_best_result(self, event: AstrMessageEvent):
         """查询best成绩的核心逻辑，返回 (error_msg, image_path)"""
