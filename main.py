@@ -218,7 +218,7 @@ class ChunithmBot(Star):
 
     async def _get_best_result(self, event: AstrMessageEvent):
         """查询best成绩的核心逻辑，返回 (error_msg, image_path)"""
-        qq_number = event.get_sender_id()
+        qq_number = str(event.get_sender_id())
         friend_code = await self.res_mgr.get_friend_code(qq_number)
         if friend_code is None:
             return "你还未绑定你的账号！", None
@@ -291,7 +291,7 @@ class ChunithmBot(Star):
     @filter.command("overpower")
     async def cmd_overpower(self, event: AstrMessageEvent):
         """查询overpower。用法：/overpower"""
-        qq_number = event.get_sender_id()
+        qq_number = str(event.get_sender_id())
         friend_code = await self.res_mgr.get_friend_code(qq_number)
         if friend_code is None:
             yield event.plain_result("你还未绑定你的账号！")
@@ -331,7 +331,7 @@ class ChunithmBot(Star):
     @filter.command("list")
     async def cmd_list(self, event: AstrMessageEvent):
         """查询list。用法：/list"""
-        qq_number = event.get_sender_id()
+        qq_number = str(event.get_sender_id())
         friend_code = await self.res_mgr.get_friend_code(qq_number)
         if friend_code is None:
             yield event.plain_result("你还未绑定你的账号！")
@@ -367,7 +367,7 @@ class ChunithmBot(Star):
             else:
                 yield event.plain_result("图片生成失败")
         else:
-            yield event.plain_result("指令格式错误，正确格式：/dsb [难度或定数]")
+            yield event.plain_result("指令格式错误，正确格式：/list [难度或定数]")
 
     @filter.command("s_refresh")
     async def cmd_refresh(self, event: AstrMessageEvent):

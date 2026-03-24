@@ -120,6 +120,7 @@ class ResourceManager:
             qq_number: 用户的QQ号
             code: 授权码      
         """
+        qq_number = str(qq_number)
         try:
             # 1. 用 code 换取 token（异步HTTP请求）
             token_data = await self._exchange_code(code)
