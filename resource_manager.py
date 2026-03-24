@@ -117,7 +117,7 @@ class ResourceManager:
                     )
                 ''')
                 conn.commit()
-            logger.info("数据库初始化成功")
+            logger.info(f"数据库初始化成功: {self.db_file}")
         except Exception as e:
             logger.error(f"数据库初始化失败: {e}")
 
@@ -149,9 +149,11 @@ class ResourceManager:
                         (qq_number, json.dumps(token_data), int(time.time()))
                     )
                     conn.commit()
-            logger.info(f"Token已保存 ({qq_number})")
+            logger.info(f"Token已保存 ({qq_number}) -> {self.db_file}")
+            return True
         except Exception as e:
             logger.error(f"保存token失败 ({qq_number}): {e}")
+            return False
 
     def get_friend_code_from_db(self, qq_number: str):
         """从数据库获取好友码"""
@@ -201,7 +203,8 @@ class ResourceManager:
             
             # 2. 验证token数据
             if not token_data or 'access_token' not in token_data:
-                return None
+                logger.error(f"用户 {qq_number} 授权失败：换取到的token数据无效")
+                return False
             
             # 3. 计算过期时间
             current_time = int(time.time())
@@ -209,22 +212,31 @@ class ResourceManager:
             token_data['updated_at'] = current_time
             
             # 4. 保存到数据库
-            self.save_token(qq_number, token_data)
+            saved = self.save_token(qq_number, token_data)
+            if not saved:
+                logger.error(f"用户 {qq_number} 授权失败：token写入数据库失败")
+                return False
             
             # 5. 记录成功日志
             logger.info(f"✅ 用户 {qq_number} 授权成功！")
             logger.info(f"   access_token: {token_data['access_token'][:20]}...")
+            return True
             
         except asyncio.TimeoutError:
             logger.error("请求超时，服务器可能暂时无法访问")
+            return False
         except aiohttp.ClientConnectorError:
             logger.error("网络连接失败，请检查服务器网络")
+            return False
         except aiohttp.ClientResponseError as e:
             logger.error(f"服务器返回错误: {e.status}")
+            return False
         except json.JSONDecodeError:
             logger.error("服务器返回数据格式错误")
+            return False
         except Exception as e:
             logger.error(f"未知错误: {str(e)}")
+            return False
 
     async def _exchange_code(self, code: str):
         """

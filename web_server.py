@@ -42,8 +42,10 @@ class OAuthWebServer:
                 logger.info(f"收到授权回调 - state: {state}, code: {code}")
                 try:
                     # 在同步函数中调用异步方法
-                    asyncio.run(self.res_mgr.handle_oauth(qq_number=state, code=code))
-                    return "✅ 授权成功！"
+                    success = asyncio.run(self.res_mgr.handle_oauth(qq_number=state, code=code))
+                    if success:
+                        return "✅ 授权成功！"
+                    return "❌ 授权失败：token保存失败或授权码无效，请查看日志。"
                 except Exception as e:
                     logger.error(f"处理授权失败: {e}")
                     return f"❌ 授权失败: {str(e)}"
