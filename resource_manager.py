@@ -121,6 +121,8 @@ class ResourceManager:
             code: 授权码      
         """
         qq_number = str(qq_number)
+        self.load_user_data()  # 确保加载最新的用户数据
+        
         try:
             # 1. 用 code 换取 token（异步HTTP请求）
             token_data = await self._exchange_code(code)
