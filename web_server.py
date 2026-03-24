@@ -44,7 +44,14 @@ class OAuthWebServer:
                     # 在同步函数中调用异步方法
                     success = asyncio.run(self.res_mgr.handle_oauth(qq_number=state, code=code))
                     if success:
-                        return "✅ 授权成功！"
+                        # 二次校验：必须能从DB读回token，才算真正授权成功
+                        token_data = self.res_mgr.get_token(state)
+                        if token_data and token_data.get('access_token'):
+                            logger.info(f"OAuth回调二次校验通过，DB路径: {self.res_mgr.db_file}")
+                            return "✅ 授权成功！"
+
+                        logger.error(f"OAuth回调二次校验失败，DB中仍无token，DB路径: {self.res_mgr.db_file}")
+                        return "❌ 授权失败：回调后未在数据库中读到token。"
                     return "❌ 授权失败：token保存失败或授权码无效，请查看日志。"
                 except Exception as e:
                     logger.error(f"处理授权失败: {e}")

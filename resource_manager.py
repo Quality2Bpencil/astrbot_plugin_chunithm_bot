@@ -246,6 +246,7 @@ class ResourceManager:
             # 5. 记录成功日志
             logger.info(f"✅ 用户 {qq_number} 授权成功！")
             logger.info(f"   access_token: {token_data['access_token'][:20]}...")
+            logger.info(f"   token_db_path: {self.db_file}")
             return True
             
         except asyncio.TimeoutError:
