@@ -2127,11 +2127,15 @@ class ImageGenerator:
                     canvas.paste(text_img, (jacket_x, jacket_y), text_img)
 
                 # 成绩
+                if song.get('score', 0) < 1000:
+                    delta_y = 161
+                else:
+                    delta_y = 160
                 text_data.append(
                     {
                         # 分数
                         'text': f"{song.get('score', 0):,}",
-                        'position': (jacket_x + 68, jacket_y + 161),
+                        'position': (jacket_x + 68, jacket_y + delta_y),
                         'font': score_font,
                         'color': 'black',
                         'anchor': 'mm',
