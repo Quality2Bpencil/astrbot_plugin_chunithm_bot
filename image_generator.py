@@ -563,7 +563,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"dsb_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', quality=95)
+        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
         return str(output_path)
 
     async def create_song_info_image(self, song_data, output_path=None):
@@ -933,7 +933,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"song_info_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', quality=95)
+        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
         return str(output_path)
 
     async def create_b30_image(self, songs_data, player_name="CHUNITHM", output_path=None):
@@ -1376,7 +1376,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"b30_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', quality=95)
+        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
         return str(output_path)
     
     async def create_overpower_image(self, data, player_name="CHUNITHM", arg="level", output_path=None):
@@ -1716,7 +1716,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"overpower_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', quality=95)
+        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
         return str(output_path)
     
     async def create_list_image(self, data, player_name="CHUNITHM", output_path=None):
@@ -2113,7 +2113,7 @@ class ImageGenerator:
                     {
                         # 分数
                         'text': f"{song.get('score', 0):,}",
-                        'position': (jacket_x + 68, jacket_y + 160),
+                        'position': (jacket_x + 68, jacket_y + 161),
                         'font': score_font,
                         'color': 'black',
                         'anchor': 'mm',
@@ -2198,5 +2198,5 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"list_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', quality=95)
+        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
         return str(output_path)
