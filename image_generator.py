@@ -42,9 +42,19 @@ class ImageGenerator:
         img.save(base_buffer, 'PNG', optimize=True, compress_level=9)
         best_bytes = base_buffer.getvalue()
 
-        # 方案2：尝试 256 色调色板压缩，只有更小才使用
+        # 方案2：尝试 256 色 + 抖动压缩，只有更小才使用
         try:
-            palette_img = img.convert('P', palette=Image.ADAPTIVE, colors=256)
+            if hasattr(Image, 'Dither'):
+                dither_mode = Image.Dither.FLOYDSTEINBERG
+            else:
+                dither_mode = Image.FLOYDSTEINBERG
+
+            palette_img = img.convert(
+                'P',
+                palette=Image.ADAPTIVE,
+                colors=256,
+                dither=dither_mode
+            )
             palette_buffer = io.BytesIO()
             palette_img.save(palette_buffer, 'PNG', optimize=True, compress_level=9)
             palette_bytes = palette_buffer.getvalue()
