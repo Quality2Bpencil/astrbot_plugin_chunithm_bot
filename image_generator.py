@@ -1,7 +1,6 @@
 import os
 import random
 import string
-import io
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
 from pathlib import Path
 import math
@@ -31,40 +30,23 @@ class ImageGenerator:
         self.fonts_dir = self.plugins_dir / "fonts"
         self.fonts_dir.mkdir(exist_ok=True)
 
-    def save_compact_png(self, image: Image.Image, output_path):
-        """保存为更小体积的 PNG（不改变分辨率）。"""
+    def save_compact_webp(self, image: Image.Image, output_path):
+        """优先保存为 WebP 以减小体积；失败时回退到 PNG。"""
         path = Path(output_path)
+        if path.suffix.lower() != '.webp':
+            path = path.with_suffix('.webp')
+
         # 已确认不需要透明通道时，统一转 RGB 可稳定减小体积
         img = image if image.mode == 'RGB' else image.convert('RGB')
 
-        # 方案1：标准无损强压缩
-        base_buffer = io.BytesIO()
-        img.save(base_buffer, 'PNG', optimize=True, compress_level=9)
-        best_bytes = base_buffer.getvalue()
-
-        # 方案2：尝试 256 色 + 抖动压缩，只有更小才使用
         try:
-            if hasattr(Image, 'Dither'):
-                dither_mode = Image.Dither.FLOYDSTEINBERG
-            else:
-                dither_mode = Image.FLOYDSTEINBERG
-
-            palette_img = img.convert(
-                'P',
-                palette=Image.ADAPTIVE,
-                colors=256,
-                dither=dither_mode
-            )
-            palette_buffer = io.BytesIO()
-            palette_img.save(palette_buffer, 'PNG', optimize=True, compress_level=9)
-            palette_bytes = palette_buffer.getvalue()
-            if len(palette_bytes) < len(best_bytes):
-                best_bytes = palette_bytes
+            img.save(path, 'WEBP', quality=90, method=6)
+            return path
         except Exception:
-            # 调色板压缩失败时回退到标准压缩
-            pass
-
-        path.write_bytes(best_bytes)
+            # WEBP 编码失败时，回退为 PNG 以保证可用性
+            fallback_path = path.with_suffix('.png')
+            img.save(fallback_path, 'PNG', optimize=True, compress_level=9)
+            return fallback_path
 
     def draw_blurred_text(self, image, position, text, font, fill, blur_radius,
                            blur_color=None, blur_offset=(0, 0), stroke_width=0,
@@ -597,9 +579,9 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"dsb_{random_name}.png"
+            output_path = self.temp_dir / f"dsb_{random_name}.webp"
         
-        self.save_compact_png(canvas, output_path)
+        output_path = self.save_compact_webp(canvas, output_path)
         return str(output_path)
 
     async def create_song_info_image(self, song_data, output_path=None):
@@ -967,9 +949,9 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"song_info_{random_name}.png"
+            output_path = self.temp_dir / f"song_info_{random_name}.webp"
         
-        self.save_compact_png(canvas, output_path)
+        output_path = self.save_compact_webp(canvas, output_path)
         return str(output_path)
 
     async def create_b30_image(self, songs_data, player_name="CHUNITHM", output_path=None):
@@ -1410,9 +1392,9 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"b30_{random_name}.png"
+            output_path = self.temp_dir / f"b30_{random_name}.webp"
         
-        self.save_compact_png(canvas, output_path)
+        output_path = self.save_compact_webp(canvas, output_path)
         return str(output_path)
     
     async def create_overpower_image(self, data, player_name="CHUNITHM", arg="level", output_path=None):
@@ -1750,9 +1732,9 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"overpower_{random_name}.png"
+            output_path = self.temp_dir / f"overpower_{random_name}.webp"
         
-        self.save_compact_png(canvas, output_path)
+        output_path = self.save_compact_webp(canvas, output_path)
         return str(output_path)
     
     async def create_list_image(self, data, player_name="CHUNITHM", output_path=None):
@@ -2232,7 +2214,7 @@ class ImageGenerator:
         # 保存图片
         if output_path is None:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            output_path = self.temp_dir / f"list_{random_name}.png"
+            output_path = self.temp_dir / f"list_{random_name}.webp"
         
-        self.save_compact_png(canvas, output_path)
+        output_path = self.save_compact_webp(canvas, output_path)
         return str(output_path)
