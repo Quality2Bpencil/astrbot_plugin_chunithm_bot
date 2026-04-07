@@ -34,33 +34,25 @@ class ImageGenerator:
     def save_compact_png(self, image: Image.Image, output_path):
         """保存为更小体积的 PNG（不改变分辨率）。"""
         path = Path(output_path)
-        img = image
-
-        # 非透明图转 RGB，通常能显著减小体积
-        if img.mode == 'RGBA':
-            alpha = img.getchannel('A')
-            if alpha.getextrema() == (255, 255):
-                img = img.convert('RGB')
-        elif img.mode not in ('RGB', 'P'):
-            img = img.convert('RGB')
+        # 已确认不需要透明通道时，统一转 RGB 可稳定减小体积
+        img = image if image.mode == 'RGB' else image.convert('RGB')
 
         # 方案1：标准无损强压缩
         base_buffer = io.BytesIO()
         img.save(base_buffer, 'PNG', optimize=True, compress_level=9)
         best_bytes = base_buffer.getvalue()
 
-        # 方案2：对非透明图尝试 256 色调色板压缩，只有更小才使用
-        if img.mode == 'RGB':
-            try:
-                palette_img = img.convert('P', palette=Image.ADAPTIVE, colors=256)
-                palette_buffer = io.BytesIO()
-                palette_img.save(palette_buffer, 'PNG', optimize=True, compress_level=9)
-                palette_bytes = palette_buffer.getvalue()
-                if len(palette_bytes) < len(best_bytes):
-                    best_bytes = palette_bytes
-            except Exception:
-                # 调色板压缩失败时回退到标准压缩
-                pass
+        # 方案2：尝试 256 色调色板压缩，只有更小才使用
+        try:
+            palette_img = img.convert('P', palette=Image.ADAPTIVE, colors=256)
+            palette_buffer = io.BytesIO()
+            palette_img.save(palette_buffer, 'PNG', optimize=True, compress_level=9)
+            palette_bytes = palette_buffer.getvalue()
+            if len(palette_bytes) < len(best_bytes):
+                best_bytes = palette_bytes
+        except Exception:
+            # 调色板压缩失败时回退到标准压缩
+            pass
 
         path.write_bytes(best_bytes)
 
