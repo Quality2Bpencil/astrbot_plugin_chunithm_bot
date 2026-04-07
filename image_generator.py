@@ -1,6 +1,7 @@
 import os
 import random
 import string
+import io
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
 from pathlib import Path
 import math
@@ -29,6 +30,39 @@ class ImageGenerator:
         self.bgs_dir.mkdir(exist_ok=True)
         self.fonts_dir = self.plugins_dir / "fonts"
         self.fonts_dir.mkdir(exist_ok=True)
+
+    def save_compact_png(self, image: Image.Image, output_path):
+        """保存为更小体积的 PNG（不改变分辨率）。"""
+        path = Path(output_path)
+        img = image
+
+        # 非透明图转 RGB，通常能显著减小体积
+        if img.mode == 'RGBA':
+            alpha = img.getchannel('A')
+            if alpha.getextrema() == (255, 255):
+                img = img.convert('RGB')
+        elif img.mode not in ('RGB', 'P'):
+            img = img.convert('RGB')
+
+        # 方案1：标准无损强压缩
+        base_buffer = io.BytesIO()
+        img.save(base_buffer, 'PNG', optimize=True, compress_level=9)
+        best_bytes = base_buffer.getvalue()
+
+        # 方案2：对非透明图尝试 256 色调色板压缩，只有更小才使用
+        if img.mode == 'RGB':
+            try:
+                palette_img = img.convert('P', palette=Image.ADAPTIVE, colors=256)
+                palette_buffer = io.BytesIO()
+                palette_img.save(palette_buffer, 'PNG', optimize=True, compress_level=9)
+                palette_bytes = palette_buffer.getvalue()
+                if len(palette_bytes) < len(best_bytes):
+                    best_bytes = palette_bytes
+            except Exception:
+                # 调色板压缩失败时回退到标准压缩
+                pass
+
+        path.write_bytes(best_bytes)
 
     def draw_blurred_text(self, image, position, text, font, fill, blur_radius,
                            blur_color=None, blur_offset=(0, 0), stroke_width=0,
@@ -563,7 +597,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"dsb_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
+        self.save_compact_png(canvas, output_path)
         return str(output_path)
 
     async def create_song_info_image(self, song_data, output_path=None):
@@ -933,7 +967,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"song_info_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
+        self.save_compact_png(canvas, output_path)
         return str(output_path)
 
     async def create_b30_image(self, songs_data, player_name="CHUNITHM", output_path=None):
@@ -1376,7 +1410,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"b30_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
+        self.save_compact_png(canvas, output_path)
         return str(output_path)
     
     async def create_overpower_image(self, data, player_name="CHUNITHM", arg="level", output_path=None):
@@ -1716,7 +1750,7 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"overpower_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
+        self.save_compact_png(canvas, output_path)
         return str(output_path)
     
     async def create_list_image(self, data, player_name="CHUNITHM", output_path=None):
@@ -2198,5 +2232,5 @@ class ImageGenerator:
             random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             output_path = self.temp_dir / f"list_{random_name}.png"
         
-        canvas.save(output_path, 'PNG', optimize=True, compress_level=9)
+        self.save_compact_png(canvas, output_path)
         return str(output_path)
