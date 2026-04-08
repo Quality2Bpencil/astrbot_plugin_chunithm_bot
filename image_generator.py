@@ -2003,10 +2003,15 @@ class ImageGenerator:
             const_x = 220
             const_y = top_y + 38
 
+            if isinstance(const, str):
+                const_text = const
+            else:
+                const_text = f"{const:.1f}"
+
             text_data.append(
                 {
                     'position': (const_x, const_y),
-                    'text': f'{const:.1f}',
+                    'text': const_text,
                     'color': (0, 0, 0, 255),
                     'font': const_font,
                     'anchor': 'mm'
