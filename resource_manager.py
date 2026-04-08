@@ -1435,7 +1435,7 @@ class ResourceManager:
         version = 0
 
         for key, value in self.version_map.items():
-            if value in param:
+            if param in value:
                 version = key
                 break
 
