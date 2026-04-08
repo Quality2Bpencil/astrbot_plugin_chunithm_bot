@@ -1510,6 +1510,8 @@ class ResourceManager:
             level = self.song_map[song_id]['difficulties'][level_index].get('level', "0")
             score_point = score.get('score', 0)
             full_combo = score.get('full_combo', '')
+            if level not in song_list:
+                continue
             if (song_id, level_index) not in song_list[level]['songs']:
                 continue
             if score_point > song_list[level]['songs'][(song_id, level_index)]['score']:
