@@ -206,7 +206,7 @@ class ChunithmBot(Star):
             oauth_link = self.res_mgr.oauth_app.get('oauth_link') + self.res_mgr.encode(qq_number)
             reply += f"如果想要使用完整功能（如/list），请点击以下链接以授权：\n{oauth_link}\n"
         else:
-            reply += "如果想要使用完整功能（如/list），请在私聊中发送 /bind 来获取授权链接！"
+            reply += "如果想要使用完整功能（如/list），请与Bot私聊（注意是私聊！），并发送 /bind 来获取授权链接！"
 
         yield event.plain_result(reply)
 
@@ -341,7 +341,7 @@ class ChunithmBot(Star):
             song_list = await self.res_mgr.get_list(param, qq_number)
 
             if song_list is None or song_list == {}:
-                yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度或定数是否正确。")
+                yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度、定数或版本是否正确。")
                 return
             
             player = await self.res_mgr.get_player(friend_code)
@@ -362,7 +362,7 @@ class ChunithmBot(Star):
             else:
                 yield event.plain_result("图片生成失败")
         else:
-            yield event.plain_result("指令格式错误，正确格式：/list [难度或定数]")
+            yield event.plain_result("指令格式错误，正确格式：/list [难度/定数/版本]")
 
     @filter.command("s_refresh")
     async def cmd_refresh(self, event: AstrMessageEvent):
