@@ -349,6 +349,16 @@ class ImageGenerator:
         
         # 极端情况：连一个字符都放不下
         return ellipsis
+    
+    def trans_title(self, title):
+        """
+        把标题中字体里没有的符号换掉
+        """
+        trans_table = str.maketrans({
+            "〚": "【",
+            "〛": "】",
+        })
+        return title.translate(trans_table)
 
     async def create_dsb_image(self, data, output_path=None):
         """
@@ -691,7 +701,7 @@ class ImageGenerator:
             text_data = [
                 {
                     # 曲名
-                    'text': title_text,
+                    'text': self.trans_title(title_text),
                     'position': (390, 237),
                     'font': title_font,
                     'color': 'black',
@@ -829,7 +839,7 @@ class ImageGenerator:
             text_data = [
                 {
                     # 曲名
-                    'text': title_text,
+                    'text': self.trans_title(title_text),
                     'position': (390, 237),
                     'font': title_font,
                     'color': 'black',
@@ -1282,7 +1292,7 @@ class ImageGenerator:
             text_data_extend = [
                 {
                     # 曲名
-                    'text': title_text,
+                    'text': self.trans_title(title_text),
                     'position': (title_x, title_y),
                     'font': title_font,
                     'color': 'black',
