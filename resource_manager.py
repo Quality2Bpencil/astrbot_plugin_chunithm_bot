@@ -104,10 +104,10 @@ class ResourceManager:
 
     def generate_level_map(self):
         const = 1.0
-        while const <= 15.9:
+        while const <= 16.9:
             self.level_map[f"{const:.1f}"] = (const - 1e-6, const + 1e-6)
             const += 0.1
-        for level in range(1, 16):
+        for level in range(1, 17):
             self.level_map[str(level)] = (level - 1e-6, level + 0.4 + 1e-6)
             self.level_map[str(level) + '+'] = (level + 0.5 - 1e-6, level + 0.9 + 1e-6)
 
