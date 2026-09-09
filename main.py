@@ -338,15 +338,14 @@ class ChunithmBot(Star):
         if len(parts) >= 2:
             param = parts[1]  # 获取难度或定数参数
 
-            song_list = await self.res_mgr.get_list(param, qq_number)
-
-            if song_list is None or song_list == {}:
-                yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度、定数或版本是否正确。")
-                return
-            
             player = await self.res_mgr.get_player(friend_code)
             if player is None:
                 yield event.plain_result("你还未绑定你的账号！")
+                return
+
+            song_list = await self.res_mgr.get_list(param, qq_number)
+            if song_list is None or song_list == {}:
+                yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度、定数或版本是否正确。")
                 return
 
             # 调用create_dsb生成图片

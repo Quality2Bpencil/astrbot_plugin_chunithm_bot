@@ -58,7 +58,8 @@ class ResourceManager:
             22000: "LMN",
             22500: "LMN+",
             23000: "VRS",
-            23500: "XVRS"
+            24000: "XVRS",
+            24500: "XVX"
         }
         self.genre_abbr_map = {
             "流行 & 动漫": "P&A",
@@ -97,7 +98,8 @@ class ResourceManager:
             22000: ["luminous", "lmn", "lum"],
             22500: ["luminous plus", "lmn plus", "lum plus", "luminous+", "lmn+", "lum+"],
             23000: ["verse", "vrs"],
-            23500: ["x-verse", "x-vrs", "x verse", "x vrs"]
+            24000: ["x-verse", "x-vrs", "x verse", "x vrs", "x-v", "xv"],
+            24500: ["x-verse-x", "x-vrs-x", "x verse x", "x vrs x", "xvrsx", "xversex", "xvx", "x-v-x"]
         }
 
     def generate_level_map(self):
@@ -1166,8 +1168,8 @@ class ResourceManager:
     async def get_max_best(self):
         b30_list = []
         n20_list = []
-        new_version1 = 22500 # LUMINOUS PLUS
-        new_version2 = 23000 # VERSE
+        new_version1 = 24000 # X-VERSE
+        new_version2 = 24500 # X-VERSE-X
         b30_lowest = 0
         n20_lowest = 0
 
