@@ -480,7 +480,7 @@ class ResourceManager:
             async with aiohttp.ClientSession() as session:
                 versions = []
                 # 获取歌曲列表
-                async with session.get(url_songs, params={"version": 23000, "notes": "true"}) as resp:
+                async with session.get(url_songs, params={"version": 24500, "notes": "true"}) as resp:
                     if resp.status != 200:
                         raise Exception(f"歌曲API返回错误: {resp.status}")
                     data = await resp.json()
