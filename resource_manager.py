@@ -451,6 +451,7 @@ class ResourceManager:
         
         # 尝试从本地加载
         if self.songs_file.exists():
+            self.song_map = {}
             try:
                 with open(self.songs_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -475,6 +476,8 @@ class ResourceManager:
         
         url_songs = "https://maimai.lxns.net/api/v0/chunithm/song/list"
         url_alias = "https://maimai.lxns.net/api/v0/chunithm/alias/list"
+
+        self.song_map = {}
         
         try:
             async with aiohttp.ClientSession() as session:
