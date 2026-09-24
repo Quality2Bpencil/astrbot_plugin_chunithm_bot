@@ -336,7 +336,7 @@ class ChunithmBot(Star):
         parts = full_message.split()
 
         if len(parts) >= 2:
-            param = parts[1]  # 获取难度或定数参数
+            param = " ".join(parts[1:])  # 获取难度或定数参数
 
             player = await self.res_mgr.get_player(friend_code)
             if player is None:
