@@ -114,6 +114,15 @@ class ResourceManager:
     def _normalize_qq(self, qq_number) -> str:
         """统一QQ号格式，避免空白字符导致查不到同一用户。"""
         return str(qq_number).strip()
+
+    @staticmethod
+    def _query_error(code: str, message: str):
+        """Return a structured query failure without changing successful result shapes."""
+        return {"_error": {"code": code, "message": message}}
+
+    @staticmethod
+    def _is_query_error(result) -> bool:
+        return isinstance(result, dict) and isinstance(result.get("_error"), dict)
     
     def encode(self, qq: str) -> str:
         """QQ号转短码，如 1209118572 -> 某个字母数字串"""
@@ -365,16 +374,27 @@ class ResourceManager:
         token_data = self.get_token(qq_number)
         if token_data is None:
             logger.warning(f"用户 {qq_number} 未授权")
-            return None
+            return self._query_error(
+                "auth_required",
+                "你还未完成落雪 OAuth 授权，请私聊 Bot 发送 /bind，并点击授权链接完成授权。"
+            )
 
         try:
             # 1. 刷新token
             refresh_token = token_data.get('refresh_token')
+            if not refresh_token:
+                return self._query_error(
+                    "auth_expired",
+                    "你的落雪授权信息不完整，请私聊 Bot 重新发送 /bind，并点击新的授权链接完成授权。"
+                )
             new_token_data = await self._refresh_access_token(refresh_token)
             
             # 2. 验证token数据
             if not new_token_data or 'access_token' not in new_token_data:
-                return None
+                return self._query_error(
+                    "auth_refresh_failed",
+                    "暂时无法刷新落雪授权，请稍后重试；如果持续失败，请重新发送 /bind 授权。"
+                )
             
             # 3. 计算过期时间
             current_time = int(time.time())
@@ -391,14 +411,26 @@ class ResourceManager:
             
         except asyncio.TimeoutError:
             logger.error("请求超时，服务器可能暂时无法访问")
+            return self._query_error("auth_refresh_failed", "刷新落雪授权超时，请稍后重试。")
         except aiohttp.ClientConnectorError:
             logger.error("网络连接失败，请检查服务器网络")
+            return self._query_error("auth_refresh_failed", "暂时无法连接落雪服务，请稍后重试。")
         except aiohttp.ClientResponseError as e:
-            logger.error(f"服务器返回错误: {e.status}")
+            error_detail = str(e.message or e).lower()
+            if "invalid_grant" in error_detail:
+                logger.warning(f"用户 {qq_number} 的 refresh token 已失效: {e.message}")
+                return self._query_error(
+                    "auth_expired",
+                    "你的落雪授权已失效或已超过有效期，请私聊 Bot 重新发送 /bind，并点击新的授权链接完成授权。"
+                )
+            logger.error(f"服务器返回错误: {e.status}, {e.message}")
+            return self._query_error("auth_refresh_failed", "落雪授权刷新失败，请稍后重试。")
         except json.JSONDecodeError:
             logger.error("服务器返回数据格式错误")
+            return self._query_error("auth_refresh_failed", "落雪授权响应异常，请稍后重试。")
         except Exception as e:
             logger.error(f"未知错误: {str(e)}")
+            return self._query_error("auth_refresh_failed", "落雪授权刷新失败，请稍后重试。")
         
     async def _refresh_access_token(self, refresh_token: str):
         """
@@ -575,7 +607,7 @@ class ResourceManager:
             logger.error(f"曲绘下载异常 {song_id}: {e}")
             return None
         
-    async def get_from_developer_api(self, url, total_time=10, headers={}):
+    async def get_from_developer_api(self, url, total_time=10, headers={}, return_error=False):
         if headers == {}:
             headers = {
                 "Authorization": self.developer_api_key
@@ -597,13 +629,18 @@ class ResourceManager:
                     # 处理HTTP错误
                     if status == 401:
                         logger.error("API密钥无效或未授权，请检查你的developer_api_key")
-                        return None
+                        if return_error and headers.get("Authorization", "").startswith("Bearer "):
+                            return self._query_error(
+                                "auth_expired",
+                                "你的落雪授权已失效，请私聊 Bot 重新发送 /bind，并点击新的授权链接完成授权。"
+                            )
+                        return self._query_error("api_unauthorized", "查询接口未授权，请联系管理员检查 API 配置。") if return_error else None
                     elif status == 404:
                         logger.info(f"未查询到该用户！")
-                        return None
+                        return self._query_error("account_not_found", "没有查询到对应的账号数据，请确认账号绑定和同步状态。") if return_error else None
                     elif status != 200:
                         logger.error(f"HTTP错误 {status}: {text[:200]}")  # 只记录前200字符
-                        return None
+                        return self._query_error("api_error", f"落雪接口返回异常（HTTP {status}），请稍后重试。") if return_error else None
                     
                     # 尝试解析JSON
                     try:
@@ -614,22 +651,22 @@ class ResourceManager:
                         else:
                             error_msg = data.get("message", "未知错误")
                             logger.error(f"API返回错误: {error_msg}")
-                            return None
+                            return self._query_error("api_error", f"落雪接口返回错误：{error_msg}") if return_error else None
                     except Exception as e:
                         logger.error(f"JSON解析失败: {e}, 响应内容: {text[:200]}")
-                        return None
+                        return self._query_error("api_response_invalid", "落雪接口返回了无法解析的数据，请稍后重试。") if return_error else None
                         
             logger.error(f"请求超时 ({total_time}秒): {url}")
             return None
         except aiohttp.ClientConnectorError as e:
             logger.error(f"网络连接失败: {e}")
-            return None
+            return self._query_error("api_unavailable", "暂时无法连接落雪服务，请稍后重试。") if return_error else None
         except aiohttp.ClientError as e:
             logger.error(f"HTTP客户端错误: {e}")
-            return None
+            return self._query_error("api_unavailable", "访问落雪服务失败，请稍后重试。") if return_error else None
         except Exception as e:
             logger.exception(f"发生未预期的错误: {e}")
-            return None
+            return self._query_error("api_error", "查询落雪数据时发生异常，请稍后重试。") if return_error else None
         
     async def get_friend_code(self, qq_number, total_time=10):
         qq_number = str(qq_number)
@@ -659,6 +696,10 @@ class ResourceManager:
         else:
             # 尝试用个人token查询好友码
             token_data = await self.get_access_token(qq_number)
+
+            if self._is_query_error(token_data):
+                logger.error("无法获取访问令牌，无法查询overpower！")
+                return None
 
             if token_data is None:
                 logger.error("无法获取访问令牌，无法查询overpower！")
@@ -714,19 +755,23 @@ class ResourceManager:
     async def get_overpower_level(self, qq_number: str, total_time=10):
         token_data = await self.get_access_token(qq_number)
 
+        if self._is_query_error(token_data):
+            return token_data
         if token_data is None:
             logger.error("无法获取访问令牌，无法查询overpower！")
-            return None
+            return self._query_error("auth_required", "无法获取落雪授权，请私聊 Bot 发送 /bind 并完成授权。")
 
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
         }
-        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers, return_error=True)
 
-        if data == None:
+        if self._is_query_error(data):
             logger.error("查询overpower失败！")
-            return None
+            return data
+        if data is None:
+            return self._query_error("api_error", "查询 OVERPOWER 失败，请稍后重试。")
         
         #score = data[0]
         #logger.info(f"overpwer: {score.get('over_power', 0)}")
@@ -862,19 +907,23 @@ class ResourceManager:
     async def get_overpower_version(self, qq_number: str, total_time=10):
         token_data = await self.get_access_token(qq_number)
         
+        if self._is_query_error(token_data):
+            return token_data
         if token_data is None:
             logger.error("无法获取访问令牌，无法查询overpower！")
-            return None
+            return self._query_error("auth_required", "无法获取落雪授权，请私聊 Bot 发送 /bind 并完成授权。")
 
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
         }
-        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers, return_error=True)
 
-        if data == None:
+        if self._is_query_error(data):
             logger.error("查询overpower失败！")
-            return None
+            return data
+        if data is None:
+            return self._query_error("api_error", "查询 OVERPOWER 失败，请稍后重试。")
         
         version_list = []
         total_op = {}
@@ -1007,19 +1056,23 @@ class ResourceManager:
     async def get_overpower_genre(self, qq_number: str, total_time=10):
         token_data = await self.get_access_token(qq_number)
 
+        if self._is_query_error(token_data):
+            return token_data
         if token_data is None:
             logger.error("无法获取访问令牌，无法查询overpower！")
-            return None
+            return self._query_error("auth_required", "无法获取落雪授权，请私聊 Bot 发送 /bind 并完成授权。")
 
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
         }
-        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers, return_error=True)
 
-        if data == None:
+        if self._is_query_error(data):
             logger.error("查询overpower失败！")
-            return None
+            return data
+        if data is None:
+            return self._query_error("api_error", "查询 OVERPOWER 失败，请稍后重试。")
         
         genre_list = []
         total_op = {}
@@ -1298,25 +1351,33 @@ class ResourceManager:
         min_const, max_const = self.level_map.get(param, (0, 0))
         if min_const != 0 or max_const != 0:
             return await self.get_list_level(param, qq_number, total_time)
-        else:
+        if any(param in aliases for aliases in self.version_abbr.values()):
             return await self.get_list_version(param, qq_number, total_time)
+        return self._query_error(
+            "invalid_param",
+            "难度、定数或版本参数不正确，请检查输入后重试。"
+        )
 
     async def get_list_level(self, param, qq_number, total_time=10):
         token_data = await self.get_access_token(qq_number)
 
+        if self._is_query_error(token_data):
+            return token_data
         if token_data is None:
             logger.error("无法获取访问令牌，无法查询overpower！")
-            return None
+            return self._query_error("auth_required", "无法获取落雪授权，请私聊 Bot 发送 /bind 并完成授权。")
 
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
         }
-        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers, return_error=True)
 
-        if data == None:
+        if self._is_query_error(data):
             logger.error("查询list失败！")
-            return None
+            return data
+        if data is None:
+            return self._query_error("api_error", "查询 list 失败，请稍后重试。")
 
         min_const, max_const = self.level_map.get(param, (0, 0))
         song_list = {}
@@ -1363,6 +1424,11 @@ class ResourceManager:
                     song_list[const]['count']['total_op'] += (const + 3) * 5
 
         song_list = {k: v for k, v in song_list.items() if v['songs'] != {}} # 过滤掉没有歌曲的定数
+        if not song_list:
+            return self._query_error(
+                "no_songs",
+                "当前曲目数据中没有符合该定数范围的歌曲，请刷新曲目数据后重试。"
+            )
 
         for score in data:
             song_id = score.get('id', 9999)
@@ -1421,33 +1487,38 @@ class ResourceManager:
         return song_list
     
     async def get_list_version(self, param, qq_number, total_time=10):
+        version = 0
+        for key, value in self.version_abbr.items():
+            if param in value:
+                version = key
+                break
+        if version == 0:
+            logger.error("版本参数错误！")
+            return self._query_error(
+                "invalid_param",
+                "版本参数不正确，请检查版本名称后重试。"
+            )
+
         token_data = await self.get_access_token(qq_number)
 
+        if self._is_query_error(token_data):
+            return token_data
         if token_data is None:
             logger.error("无法获取访问令牌，无法查询overpower！")
-            return None
+            return self._query_error("auth_required", "无法获取落雪授权，请私聊 Bot 发送 /bind 并完成授权。")
 
         url = "https://maimai.lxns.net/api/v0/user/chunithm/player/scores"
         headers = {
             "Authorization": token_data.get("token_type","") + " " + token_data.get("access_token","")
         }
-        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers)
+        data = await self.get_from_developer_api(url=url, total_time=total_time, headers=headers, return_error=True)
 
-        if data == None:
+        if self._is_query_error(data):
             logger.error("查询list失败！")
-            return None
+            return data
+        if data is None:
+            return self._query_error("api_error", "查询 list 失败，请稍后重试。")
         
-        version = 0
-
-        for key, value in self.version_abbr.items():
-            if param in value:
-                version = key
-                break
-
-        if version == 0:
-            logger.error("版本参数错误！")
-            return None
-
         song_list = {}
         level = 15
         while level >= 1:
@@ -1506,6 +1577,11 @@ class ResourceManager:
                     song_list[level]['count']['total_op'] += (const + 3) * 5
 
         song_list = {k: v for k, v in song_list.items() if v['songs'] != {}} # 过滤掉没有歌曲的难度
+        if not song_list:
+            return self._query_error(
+                "no_songs",
+                "当前曲目数据中没有符合该版本的歌曲，请刷新曲目数据后重试。"
+            )
 
         for score in data:
             song_id = score.get('id', 9999)

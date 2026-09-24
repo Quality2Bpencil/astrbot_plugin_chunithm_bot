@@ -6,7 +6,6 @@ import astrbot.api.message_components as Comp
 from astrbot.api.event import MessageChain
 import aiohttp
 import asyncio
-import json
 import re
 import os
 from pathlib import Path
@@ -36,6 +35,15 @@ class ChunithmBot(Star):
 
         self.web_server.start()
         logger.info(f"启动OAuth网页成功")
+
+    @staticmethod
+    def _get_query_error_message(result):
+        if not isinstance(result, dict):
+            return None
+        error = result.get("_error")
+        if isinstance(error, dict):
+            return error.get("message") or "查询失败，请稍后重试。"
+        return None
     
     def search_song(self, keyword, threshold=60):
         """
@@ -294,27 +302,39 @@ class ChunithmBot(Star):
         parts = full_message.split()
         if len(parts) <= 1 or (len(parts) >= 2 and parts[1] == 'level'):
             data = await self.res_mgr.get_overpower_level(qq_number)
+            error_message = self._get_query_error_message(data)
+            if error_message:
+                yield event.plain_result(error_message)
+                return
             player = await self.res_mgr.get_player(friend_code)
             if data is None or player is None:
-                yield event.plain_result("你还未绑定你的账号！")
+                yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="level")
             yield event.image_result(image_path)
             self.res_mgr.cleanup_old_files()
         elif parts[1] == 'version' or parts[1] == 'ver':
             data = await self.res_mgr.get_overpower_version(qq_number)
+            error_message = self._get_query_error_message(data)
+            if error_message:
+                yield event.plain_result(error_message)
+                return
             player = await self.res_mgr.get_player(friend_code)
             if data is None or player is None:
-                yield event.plain_result("你还未绑定你的账号！")
+                yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="version")
             yield event.image_result(image_path)
             self.res_mgr.cleanup_old_files()
         elif parts[1] == 'genre' or parts[1] == 'type':
             data = await self.res_mgr.get_overpower_genre(qq_number)
+            error_message = self._get_query_error_message(data)
+            if error_message:
+                yield event.plain_result(error_message)
+                return
             player = await self.res_mgr.get_player(friend_code)
             if data is None or player is None:
-                yield event.plain_result("你还未绑定你的账号！")
+                yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="genre")
             yield event.image_result(image_path)
@@ -338,14 +358,18 @@ class ChunithmBot(Star):
         if len(parts) >= 2:
             param = " ".join(parts[1:])  # 获取难度或定数参数
 
-            player = await self.res_mgr.get_player(friend_code)
-            if player is None:
-                yield event.plain_result("你还未绑定你的账号！")
-                return
-
             song_list = await self.res_mgr.get_list(param, qq_number)
+            error_message = self._get_query_error_message(song_list)
+            if error_message:
+                yield event.plain_result(error_message)
+                return
             if song_list is None or song_list == {}:
                 yield event.plain_result("未找到符合条件的歌曲，请检查输入的难度、定数或版本是否正确。")
+                return
+
+            player = await self.res_mgr.get_player(friend_code)
+            if player is None:
+                yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
 
             # 调用create_dsb生成图片
