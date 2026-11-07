@@ -125,10 +125,28 @@ def _group_rows(records: list[dict[str, Any]], group_name: str) -> tuple[list[st
 
 
 def _font(size: int, bold: bool = False):
-    for path in (Path("C:/Windows/Fonts") / ("msyhbd.ttc" if bold else "msyh.ttc"), Path("C:/Windows/Fonts/simsun.ttc")):
+    configured = os.getenv("SXCZ_FONT_PATH")
+    candidates = []
+    if configured:
+        candidates.append(Path(configured))
+    candidates.extend([
+        Path(__file__).resolve().parents[2] / "plugin_data" / "astrbot_plugin_chunithm_bot" / "fonts" / "SourceHanSans.ttc",
+        Path("C:/Windows/Fonts") / ("msyhbd.ttc" if bold else "msyh.ttc"),
+        Path("C:/Windows/Fonts/simsun.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansSC-Bold.otf" if bold else "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+    ])
+    for path in candidates:
         if path.exists():
-            return ImageFont.truetype(str(path), size)
-    return ImageFont.load_default()
+            try:
+                return ImageFont.truetype(str(path), size)
+            except OSError:
+                continue
+    raise FileNotFoundError(
+        "未找到支持中日文的字体。请安装 Noto Sans CJK/WenQuanYi，或设置 SXCZ_FONT_PATH 指向字体文件。"
+    )
 
 
 def save_ranked_tables_as_image(records: list[dict[str, Any]], output_path: str | os.PathLike[str]) -> str:
