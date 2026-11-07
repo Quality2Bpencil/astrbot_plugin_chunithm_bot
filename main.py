@@ -8,12 +8,14 @@ import aiohttp
 import asyncio
 import re
 import os
+import uuid
 from pathlib import Path
 from thefuzz import fuzz
 
 from .resource_manager import ResourceManager
 from .image_generator import ImageGenerator
 from .web_server import OAuthWebServer
+from .feishu_bitable import FeishuAPIError, generate_ranked_tables_image
 
 @register("chunithm_bot", "Ku2uka", "CHUNITHM机器人", "1.0.1")
 class ChunithmBot(Star):
@@ -236,6 +238,22 @@ class ChunithmBot(Star):
         """显示帮助信息。用法：/help"""
         image_path = str(self.res_mgr.help_image)
         yield event.image_result(image_path)
+
+    @filter.command("sxcz4th")
+    async def cmd_sxcz4th(self, event: AstrMessageEvent):
+        """生成 SXCZ 第四届排名图片，并引用触发命令的消息。"""
+        output_path = self.res_mgr.temp_dir / f"sxcz4th_{uuid.uuid4().hex}.png"
+        try:
+            image_path = await asyncio.to_thread(generate_ranked_tables_image, output_path)
+        except (FeishuAPIError, OSError, ValueError, KeyError) as exc:
+            logger.error(f"生成 SXCZ 第四届排名图片失败: {exc}")
+            yield event.plain_result("图片生成失败，请稍后重试。")
+            return
+        reply_id = getattr(getattr(event, "message_obj", None), "message_id", None)
+        components = [Comp.Reply(id=str(reply_id))] if reply_id else []
+        components.append(Comp.Image.fromFileSystem(str(image_path)))
+        yield event.chain_result(components)
+        self.res_mgr.cleanup_old_files()
 
     @filter.command("b30")
     async def cmd_b30(self, event: AstrMessageEvent):
