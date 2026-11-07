@@ -129,8 +129,14 @@ def _font(size: int, bold: bool = False):
     candidates = []
     if configured:
         candidates.append(Path(configured))
+    source_han = Path(__file__).resolve().parents[2] / "plugin_data" / "astrbot_plugin_chunithm_bot" / "fonts" / "SourceHanSans.ttc"
+    if source_han.exists():
+        try:
+            # SourceHanSans.ttc stores the SC Medium and Bold faces at these indices.
+            return ImageFont.truetype(str(source_han), size, index=32 if bold else 27)
+        except OSError:
+            pass
     candidates.extend([
-        Path(__file__).resolve().parents[2] / "plugin_data" / "astrbot_plugin_chunithm_bot" / "fonts" / "SourceHanSans.ttc",
         Path("C:/Windows/Fonts") / ("msyhbd.ttc" if bold else "msyh.ttc"),
         Path("C:/Windows/Fonts/simsun.ttc"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
