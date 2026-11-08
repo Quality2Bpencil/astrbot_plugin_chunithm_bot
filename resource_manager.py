@@ -1,6 +1,9 @@
 import aiohttp
 import asyncio
 import json
+import random
+import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from astrbot.api import logger
 from curl_cffi.requests import AsyncSession
@@ -11,6 +14,7 @@ from threading import Lock
 
 class ResourceManager:
     """资源管理器：负责歌曲数据的加载"""
+    DIFFICULTY_NAMES = ("BASIC", "ADVANCED", "EXPERT", "MASTER", "ULTIMA")
     
     def __init__(self, plugin_name: str, data_root: Path):
         """
@@ -101,6 +105,45 @@ class ResourceManager:
             24000: ["x-verse", "x-vrs", "x verse", "x vrs", "x-v", "xv"],
             24500: ["x-verse-x", "x-vrs-x", "x verse x", "x vrs x", "xvrsx", "xversex", "xvx", "x-v-x"]
         }
+
+    @staticmethod
+    def _parse_random_range(value):
+        """返回定数闭区间，整数和 + 标级沿用插件的分档规则。"""
+        if re.fullmatch(r"(?:[1-9]|1[0-6])\+?", value):
+            base = Decimal(value.rstrip("+"))
+            if value.endswith("+"):
+                return base + Decimal("0.5"), base + Decimal("0.9")
+            return base, base + Decimal("0.4")
+        if re.fullmatch(r"(?:[1-9]|1[0-6])\.[0-9]", value):
+            number = Decimal(value)
+            if number <= 16:
+                return number, number
+        raise ValueError("难度请输入 1–16 的整数或整数加 +；定数请输入 1.0–16.0 的一位小数。")
+
+    def get_random_chart(self, arguments):
+        """按谱面等概率抽取，返回 (歌曲, 谱面)，无匹配时返回 None。"""
+        if len(arguments) not in (1, 2):
+            raise ValueError("用法：/random 难度或定数 [另一个难度或定数]，例如 /random 14+ 或 /random 13.5 14+。")
+        ranges = [self._parse_random_range(value) for value in arguments]
+        lower = min(item[0] for item in ranges)
+        upper = max(item[1] for item in ranges)
+        candidates = []
+        seen = set()
+        for song in self.songs:
+            for chart in song.get("difficulties", []):
+                index = chart.get("difficulty")
+                # WORLD'S END 使用星级，不属于普通难度/定数体系。
+                if index not in range(len(self.DIFFICULTY_NAMES)):
+                    continue
+                try:
+                    constant = Decimal(str(chart.get("level_value")))
+                except InvalidOperation:
+                    continue
+                key = (song.get("id"), index)
+                if constant.is_finite() and lower <= constant <= upper and key not in seen:
+                    candidates.append((song, chart))
+                    seen.add(key)
+        return random.choice(candidates) if candidates else None
 
     def generate_level_map(self):
         const = 1.0
