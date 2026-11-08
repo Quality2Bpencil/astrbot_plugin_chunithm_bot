@@ -48,9 +48,9 @@ class ChunithmBot(Star):
         return None
 
     @staticmethod
-    def _quoted_image_result(event, image_path, text=None):
-        reply_id = getattr(getattr(event, "message_obj", None), "message_id", None)
-        components = [Comp.Reply(id=str(reply_id))] if reply_id is not None else []
+    def _image_chain_result(event, image_path, text=None):
+        """使用消息链发送图文，引用原消息交由 Bot 的全局设置处理。"""
+        components = []
         if text:
             components.append(Comp.Plain(text))
         components.append(Comp.Image.fromFileSystem(str(image_path)))
@@ -77,7 +77,7 @@ class ChunithmBot(Star):
             yield event.plain_result("图片生成失败，请稍后重试。")
             return
         text = f"c{song['id']} - {song['title']} [{self.res_mgr.DIFFICULTY_NAMES[chart['difficulty']]}]\n"
-        yield self._quoted_image_result(event, image_path, text)
+        yield self._image_chain_result(event, image_path, text)
         self.res_mgr.cleanup_old_files()
     
     def search_song(self, keyword, threshold=60):
@@ -224,7 +224,7 @@ class ChunithmBot(Star):
             # 检查图片是否生成成功
             if image_path and os.path.exists(image_path):
                 # 返回图片
-                yield self._quoted_image_result(event, image_path)
+                yield self._image_chain_result(event, image_path)
                 
                 # 清理临时文件
                 self.res_mgr.cleanup_old_files()
@@ -270,7 +270,7 @@ class ChunithmBot(Star):
     async def cmd_help(self, event: AstrMessageEvent):
         """显示帮助信息。用法：/help"""
         image_path = str(self.res_mgr.help_image)
-        yield self._quoted_image_result(event, image_path)
+        yield self._image_chain_result(event, image_path)
 
     @filter.command("sxcz4th")
     async def cmd_sxcz4th(self, event: AstrMessageEvent):
@@ -295,7 +295,7 @@ class ChunithmBot(Star):
         if error:
             yield event.plain_result(error)
         else:
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             # 清理临时文件
             self.res_mgr.cleanup_old_files()
 
@@ -306,7 +306,7 @@ class ChunithmBot(Star):
         if error:
             yield event.plain_result(error)
         else:
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             # 清理临时文件
             self.res_mgr.cleanup_old_files()
 
@@ -326,7 +326,7 @@ class ChunithmBot(Star):
         if error:
             yield event.plain_result(error)
         else:
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             # 清理临时文件
             self.res_mgr.cleanup_old_files()
 
@@ -337,7 +337,7 @@ class ChunithmBot(Star):
         if error:
             yield event.plain_result(error)
         else:
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             # 清理临时文件
             self.res_mgr.cleanup_old_files()
 
@@ -362,7 +362,7 @@ class ChunithmBot(Star):
                 yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="level")
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             self.res_mgr.cleanup_old_files()
         elif parts[1] == 'version' or parts[1] == 'ver':
             data = await self.res_mgr.get_overpower_version(qq_number)
@@ -375,7 +375,7 @@ class ChunithmBot(Star):
                 yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="version")
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             self.res_mgr.cleanup_old_files()
         elif parts[1] == 'genre' or parts[1] == 'type':
             data = await self.res_mgr.get_overpower_genre(qq_number)
@@ -388,7 +388,7 @@ class ChunithmBot(Star):
                 yield event.plain_result("没有查询到账号数据，请确认已绑定 QQ 且落雪账号已同步中二节奏成绩。")
                 return
             image_path = await self.img_gen.create_overpower_image(data=data, player_name=player.get("name", "CHUNITHM"), arg="genre")
-            yield self._quoted_image_result(event, image_path)
+            yield self._image_chain_result(event, image_path)
             self.res_mgr.cleanup_old_files()
         else:
             yield event.plain_result("指令格式错误，正确格式：/overpower level/version/genre")
@@ -429,7 +429,7 @@ class ChunithmBot(Star):
             # 检查图片是否生成成功
             if image_path and os.path.exists(image_path):
                 # 返回图片
-                yield self._quoted_image_result(event, image_path)
+                yield self._image_chain_result(event, image_path)
                 
                 # 清理临时文件
                 self.res_mgr.cleanup_old_files()
