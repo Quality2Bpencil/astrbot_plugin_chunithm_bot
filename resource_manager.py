@@ -1246,6 +1246,7 @@ class ResourceManager:
         return result
     
     def calc_overpower(self, score) -> float:
+        return score.get('over_power', 0)
         score_point = score.get('score', 0)
         level_index = score.get('level_index', 0)
         song_id = score.get('id', 0)
