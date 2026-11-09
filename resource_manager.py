@@ -1260,9 +1260,9 @@ class ResourceManager:
         elif full_combo == "fullcombo":
             fc_bonus = 0.5
         if score_point < 1007500:
-            return rating * 5 + fc_bonus
+            return int(rating * 100 + 1e-10) / 100 * 5 + fc_bonus
         else:
-            return (const + 2) * 5 + fc_bonus + (score_point - 1007500) * 0.0015
+            return int(((const + 2) * 5 + fc_bonus + (score_point - 1007500) * 0.0015) * 100 + 1e-10) / 100
     
     async def get_max_best(self):
         b30_list = []
