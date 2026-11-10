@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import json
 import random
+import math
 import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -924,6 +925,7 @@ class ResourceManager:
         level_list.sort(reverse=True)
         
         for level in level_list:
+            user_op[level] = math.floor(user_op[level] * 100 + 1e-7) / 100
             result[level] = {
                 "all": all_cnt[level],
                 "ajc": ajc_cnt[level],
@@ -1073,6 +1075,7 @@ class ResourceManager:
         version_list.sort()
         
         for version in version_list:
+            user_op[version] = math.floor(user_op[version] * 100 + 1e-7) / 100
             result[version] = {
                 "all": all_cnt[version],
                 "ajc": ajc_cnt[version],
@@ -1222,6 +1225,7 @@ class ResourceManager:
         }
         
         for genre in genre_list:
+            user_op[genre] = math.floor(user_op[genre] * 100 + 1e-7) / 100
             result[genre] = {
                 "all": all_cnt[genre],
                 "ajc": ajc_cnt[genre],
@@ -1246,24 +1250,46 @@ class ResourceManager:
         return result
     
     def calc_overpower(self, score) -> float:
-        return score.get('over_power', 0)
         score_point = score.get('score', 0)
         level_index = score.get('level_index', 0)
         song_id = score.get('id', 0)
         const = self.song_map[song_id]['difficulties'][level_index].get('level_value', 0)
         rating = score.get('rating', 0)
         full_combo = score.get('full_combo', '')
-        fc_bonus = 0
-        if full_combo == "alljusticecritical":
-            fc_bonus = 1.25
-        elif full_combo == "alljustice":
-            fc_bonus = 1
-        elif full_combo == "fullcombo":
-            fc_bonus = 0.5
-        if score_point < 1007500:
-            return int(rating * 100 + 1e-10) / 100 * 5 + fc_bonus
+        if not isinstance(const, (int, float)) or isinstance(const, bool) or not math.isfinite(const):
+            return None
+        if isinstance(score_point, bool) or not isinstance(score_point, int):
+            return None
+        if score_point < 0 or score_point > 1010000:
+            return None
+
+        # Below S, the observed game calculation truncates the play rating first.
+        if score_point < 975000:
+            return math.floor(rating(const, score_point) * 100 + 1e-7) / 20
+
+        # Integer units prevent binary float errors at score and display boundaries.
+        # S: +.0002/point; SS: +.0005; SS+: +.001; SSS onward: +.0015.
+        units = math.floor(const * 50000 + 0.5)
+
+        if score_point >= 1007500:
+            units += 100000 + (score_point - 1007500) * 15
+        elif score_point >= 1005000:
+            units += 75000 + (score_point - 1005000) * 10
+        elif score_point >= 1000000:
+            units += 50000 + (score_point - 1000000) * 5
         else:
-            return int(((const + 2) * 5 + fc_bonus + (score_point - 1007500) * 0.0015) * 100 + 1e-10) / 100
+            units += (score_point - 975000) * 2
+
+        if score_point == 1010000:
+            units += 12500
+        elif full_combo == 'fullcombo':
+            units += 5000
+        elif full_combo in ('alljustice', 'alljusticecritical'):
+            units += 10000
+
+        # calc_op2: floor(raw / .005) * .005, before per-song selection or summation.
+        # units are ten-thousandths; 50 units are exactly .005 OP.
+        return math.floor(units / 50) / 200
     
     async def get_max_best(self):
         b30_list = []
@@ -1520,6 +1546,8 @@ class ResourceManager:
                 if level_index == len(self.song_map[song_id].get('difficulties', [])) - 1: # 最高难度
                     song_list[const]['count']['user_op'] += songs[(song_id, level_index)]['user_op']
 
+            song_list[const]['count']['user_op'] = math.floor(song_list[const]['count']['user_op'] * 100 + 1e-7) / 100 # 总OP向下取整保留两位小数
+
             # 按分数排序
             sorted_songs = sorted(
                 songs.items(),
@@ -1671,6 +1699,8 @@ class ResourceManager:
 
                 if level_index == len(self.song_map[song_id].get('difficulties', [])) - 1: # 最高难度
                     song_list[level]['count']['user_op'] += songs[(song_id, level_index)]['user_op']
+
+            song_list[level]['count']['user_op'] = math.floor(song_list[level]['count']['user_op'] * 100 + 1e-7) / 100 # 总OP向下取整保留两位小数
 
             # 按分数排序
             sorted_songs = sorted(
