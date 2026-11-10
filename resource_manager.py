@@ -1265,7 +1265,7 @@ class ResourceManager:
 
         # Below S, the observed game calculation truncates the play rating first.
         if score_point < 975000:
-            return math.floor(rating(const, score_point) * 100 + 1e-7) / 20
+            return math.floor(rating * 100 + 1e-7) / 20
 
         # Integer units prevent binary float errors at score and display boundaries.
         # S: +.0002/point; SS: +.0005; SS+: +.001; SSS onward: +.0015.
