@@ -1910,8 +1910,12 @@ class ImageGenerator:
         for spec in long_rect_specs:
             canvas = self.draw_shadow_rounded_rect(canvas, **spec)
 
-        const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
-        const_font.set_variation_by_name('Bold')
+        if next(iter(data))[0] >= '0' and next(iter(data))[0] <= '9':
+            const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
+            const_font.set_variation_by_name('Bold')
+        else:
+            const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 46)
+            const_font.set_variation_by_name('Medium')
 
         # 玩家昵称
         name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 52)
