@@ -1417,18 +1417,37 @@ class ResourceManager:
 
         return song_list
     
-    async def get_list(self, param, qq_number, total_time=10):
+    async def get_list(self, param, qq_number, total_time=10, no_const=False, no_level=False):
+        if no_const and no_level:
+            return self._query_error(
+                "invalid_param",
+                "noconst 和 nolevel 选项不能同时使用。"
+            )
+        if no_const and not re.fullmatch(r"(?:[1-9]|1[0-6])\+?", param):
+            return self._query_error(
+                "invalid_param",
+                "noconst 选项仅适用于整数等级，例如 /list 14 noconst。"
+            )
+        if no_level and not any(param in aliases for aliases in self.version_abbr.values()):
+            return self._query_error(
+                "invalid_param",
+                "nolevel 选项仅适用于版本查询，例如 /list origin nolevel。"
+            )
         min_const, max_const = self.level_map.get(param, (0, 0))
         if min_const != 0 or max_const != 0:
-            return await self.get_list_level(param, qq_number, total_time)
+            return await self.get_list_level(
+                param, qq_number, total_time, no_const=no_const
+            )
         if any(param in aliases for aliases in self.version_abbr.values()):
-            return await self.get_list_version(param, qq_number, total_time)
+            return await self.get_list_version(
+                param, qq_number, total_time, no_level=no_level
+            )
         return self._query_error(
             "invalid_param",
             "难度、定数或版本参数不正确，请检查输入后重试。"
         )
 
-    async def get_list_level(self, param, qq_number, total_time=10):
+    async def get_list_level(self, param, qq_number, total_time=10, no_const=False):
         token_data = await self.get_access_token(qq_number)
 
         if self._is_query_error(token_data):
@@ -1556,9 +1575,35 @@ class ResourceManager:
             )
             data['songs'] = dict(sorted_songs)
 
+        if no_const:
+            merged_count = {
+                'all': 0,
+                'ajc': 0,
+                'aj': 0,
+                'fc': 0,
+                'sssp': 0,
+                'sss': 0,
+                'ssp': 0,
+                'total_op': 0,
+                'user_op': 0
+            }
+            merged_songs = {}
+            for value in song_list.values():
+                merged_songs.update(value['songs'])
+                for key in merged_count:
+                    merged_count[key] += value['count'][key]
+
+            merged_count['user_op'] = math.floor(merged_count['user_op'] * 100 + 1e-7) / 100
+            merged_songs = dict(sorted(
+                merged_songs.items(),
+                key=lambda item: item[1].get('score', 0),
+                reverse=True
+            ))
+            return {param: {'songs': merged_songs, 'count': merged_count}}
+
         return song_list
     
-    async def get_list_version(self, param, qq_number, total_time=10):
+    async def get_list_version(self, param, qq_number, total_time=10, no_level=False):
         version = 0
         for key, value in self.version_abbr.items():
             if param in value:
@@ -1570,6 +1615,7 @@ class ResourceManager:
                 "invalid_param",
                 "版本参数不正确，请检查版本名称后重试。"
             )
+        version_name = self.version_abbr_map.get(version, "未知版本")
 
         token_data = await self.get_access_token(qq_number)
 
@@ -1709,5 +1755,33 @@ class ResourceManager:
                 reverse=True
             )
             data['songs'] = dict(sorted_songs)
+
+        if no_level:
+            merged_count = {
+                'all': 0,
+                'ajc': 0,
+                'aj': 0,
+                'fc': 0,
+                'sssp': 0,
+                'sss': 0,
+                'ssp': 0,
+                'total_op': 0,
+                'user_op': 0
+            }
+            merged_songs = {}
+            for value in song_list.values():
+                merged_songs.update(value['songs'])
+                for key in merged_count:
+                    merged_count[key] += value['count'][key]
+
+            merged_count['user_op'] = math.floor(
+                merged_count['user_op'] * 100 + 1e-7
+            ) / 100
+            merged_songs = dict(sorted(
+                merged_songs.items(),
+                key=lambda item: item[1].get('score', 0),
+                reverse=True
+            ))
+            return {version_name: {'songs': merged_songs, 'count': merged_count}}
 
         return song_list

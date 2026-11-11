@@ -415,9 +415,17 @@ class ChunithmBot(Star):
         parts = full_message.split()
 
         if len(parts) >= 2:
-            param = " ".join(parts[1:])  # 获取难度或定数参数
+            param = parts[1]
+            option = parts[2].lower() if len(parts) == 3 else None
+            if len(parts) > 3 or (option not in (None, "noconst", "nolevel")):
+                yield event.plain_result("指令格式错误，正确格式：/list [难度/定数/版本] [noconst/nolevel]")
+                return
+            no_const = option == "noconst"
+            no_level = option == "nolevel"
 
-            song_list = await self.res_mgr.get_list(param, qq_number)
+            song_list = await self.res_mgr.get_list(
+                param, qq_number, no_const=no_const, no_level=no_level
+            )
             error_message = self._get_query_error_message(song_list)
             if error_message:
                 yield event.plain_result(error_message)
