@@ -1910,7 +1910,7 @@ class ImageGenerator:
         for spec in long_rect_specs:
             canvas = self.draw_shadow_rounded_rect(canvas, **spec)
 
-        if next(iter(data))[0] >= '0' and next(iter(data))[0] <= '9':
+        if str(next(iter(data)))[0] >= '0' and str(next(iter(data)))[0] <= '9':
             const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 52)
             const_font.set_variation_by_name('Bold')
         else:
