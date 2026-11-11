@@ -1426,12 +1426,12 @@ class ResourceManager:
         if no_const and not re.fullmatch(r"(?:[1-9]|1[0-6])\+?", param):
             return self._query_error(
                 "invalid_param",
-                "noconst 选项仅适用于整数等级，例如 /list 14 noconst。"
+                "noconst 选项仅适用于整数等级，例如 /list 14 -noconst。"
             )
         if no_level and not any(param in aliases for aliases in self.version_abbr.values()):
             return self._query_error(
                 "invalid_param",
-                "nolevel 选项仅适用于版本查询，例如 /list origin nolevel。"
+                "nolevel 选项仅适用于版本查询，例如 /list origin -nolevel。"
             )
         min_const, max_const = self.level_map.get(param, (0, 0))
         if min_const != 0 or max_const != 0:
