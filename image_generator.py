@@ -1915,7 +1915,7 @@ class ImageGenerator:
             const_font.set_variation_by_name('Bold')
         else:
             const_font = ImageFont.truetype(self.fonts_dir / 'OPPO Sans 4.0.ttf', 46)
-            const_font.set_variation_by_name('Medium')
+            const_font.set_variation_by_name('SemiBold')
 
         # 玩家昵称
         name_font = ImageFont.truetype(self.fonts_dir / 'LINESeedJP_TTF_Bd.ttf', 52)
